@@ -1,0 +1,24 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "source": "DECISIONS-LOG v3.2 Г13",
+    "description": "10 карт на партию (4 Везение + 4 Двойка + 2 Ключ Хокинса). Порог активации = 2 одинаковых (K-2)."
+  },
+  "initialCounts": {
+    "luck": 4,
+    "double": 4,
+    "keys": 2
+  },
+  "totalPerPartition": 10,
+  "activationThreshold": 2,
+  "meta": {
+    "luck":   { "label": "Везение",      "effect": "×2 шанс на редкий подарок", "icon": "dices" },
+    "double": { "label": "Двойка",       "effect": "×2 зарядов с коробки",       "icon": "flame" },
+    "keys":   { "label": "Ключ Хокинса", "effect": "Открывает топ-коллекцию",    "icon": "key"   }
+  },
+  "luckRareWeight": 2,
+  "bonusCard": {
+    "label": "Мгновенный бонус",
+    "description": "4-я auto-сила. Срабатывает мгновенно при выпадении (вне draw-engine, independent HMAC roll). Не накапливается. ~25 срабатываний/100 коробок × 100⚡ ≈ 2500⚡ ≈ 3.3% призового бюджета."
+  }
+}

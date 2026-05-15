@@ -1,0 +1,18 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "source": "PWA-Task-v2 §2 + STRATEGY-Visual-Identity §3.1",
+    "description": "Engine pool → UI collection mapping с инверсией (Ichiban Kuji convention). Игрок НИКОГДА не видит engine pool, только UI A/B/C где A = топ-коллекция."
+  },
+  "enginePoolToUi": {
+    "A": "C",
+    "B": "B",
+    "C": "A"
+  },
+  "uiCollections": {
+    "A": { "label": "A", "accentHex": "#B8845A", "description": "топ-коллекция",     "boxesInPool": 5  },
+    "B": { "label": "B", "accentHex": "#5A7AA0", "description": "средняя коллекция", "boxesInPool": 25 },
+    "C": { "label": "C", "accentHex": "#8A8A8A", "description": "базовая коллекция", "boxesInPool": 70 }
+  },
+  "displayOrder": ["A", "B", "C"]
+}

@@ -1,0 +1,45 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "source": "PILOT-PARTITION-LAYOUT v2.1 §6",
+    "description": "25 призовых slot_id + 5 стикеров. Каждый slot имеет engine pool A/B/C. Σ count для призов = 100 (партия)."
+  },
+  "slots": [
+    { "slotId": "st-junk-norm-a-1", "name": "Код Морзе Хокинса",        "tier": "JUNK",      "variant": "Normal", "pool": "A", "count": 8, "icon": "radio" },
+    { "slotId": "st-junk-norm-a-2", "name": "Радиосигнал тайной точки", "tier": "JUNK",      "variant": "Normal", "pool": "A", "count": 8, "icon": "radio" },
+    { "slotId": "st-junk-norm-a-3", "name": "Граффити Изнанки",         "tier": "JUNK",      "variant": "Normal", "pool": "A", "count": 7, "icon": "flame" },
+    { "slotId": "st-junk-norm-a-4", "name": "Карта города 80s",         "tier": "JUNK",      "variant": "Normal", "pool": "A", "count": 7, "icon": "radio" },
+
+    { "slotId": "st-com-norm-a-1",  "name": "H4 «Девочка с силой»",        "tier": "Common",    "variant": "Normal", "pool": "A", "count": 8, "icon": "card" },
+    { "slotId": "st-com-norm-a-2",  "name": "H4 «Шериф 80s»",              "tier": "Common",    "variant": "Normal", "pool": "A", "count": 7, "icon": "card" },
+    { "slotId": "st-com-norm-a-3",  "name": "H4 «Пропавший друг»",         "tier": "Common",    "variant": "Normal", "pool": "A", "count": 7, "icon": "card" },
+    { "slotId": "st-com-norm-a-4",  "name": "H4 «Клуб исследователей»",    "tier": "Common",    "variant": "Normal", "pool": "A", "count": 7, "icon": "card" },
+    { "slotId": "st-com-norm-a-5",  "name": "H4 «Велосипеды на закате»",   "tier": "Common",    "variant": "Normal", "pool": "A", "count": 6, "icon": "card" },
+
+    { "slotId": "st-rare-norm-a-1", "name": "Брелок «Фонарик шерифа»",           "tier": "Rare",      "variant": "Normal", "pool": "A", "count": 1, "icon": "keychain" },
+    { "slotId": "st-rare-norm-a-2", "name": "Патч «Клуб АД» вышивка",            "tier": "Rare",      "variant": "Normal", "pool": "A", "count": 1, "icon": "patch" },
+    { "slotId": "st-rare-norm-a-3", "name": "Магнит «Рация на велосипеде»",      "tier": "Rare",      "variant": "Normal", "pool": "A", "count": 1, "icon": "magnet" },
+    { "slotId": "st-rare-holo-a-1", "name": "Брелок-голограмма «Портал»",        "tier": "Rare",      "variant": "Holo",   "pool": "A", "count": 1, "icon": "keychain" },
+    { "slotId": "st-rare-gold-a-1", "name": "Gold-брелок «Ключ от лаборатории»", "tier": "Rare",      "variant": "Gold",   "pool": "A", "count": 1, "icon": "keychain" },
+    { "slotId": "st-rare-norm-b-1", "name": "Брелок «Тварь из Изнанки мини»",    "tier": "Rare",      "variant": "Normal", "pool": "B", "count": 6, "icon": "keychain" },
+    { "slotId": "st-rare-norm-b-2", "name": "Фигурка-брелок «Радиостанция»",     "tier": "Rare",      "variant": "Normal", "pool": "B", "count": 6, "icon": "figure" },
+    { "slotId": "st-rare-norm-b-3", "name": "Брелок «Компас странника»",         "tier": "Rare",      "variant": "Normal", "pool": "B", "count": 6, "icon": "keychain" },
+    { "slotId": "st-rare-holo-b-1", "name": "Патч-голограмма «Лаборатория»",     "tier": "Rare",      "variant": "Holo",   "pool": "B", "count": 2, "icon": "patch" },
+
+    { "slotId": "st-epic-norm-b-1", "name": "Фигурка «Монстр из Изнанки» 12-15см",        "tier": "Epic",      "variant": "Normal", "pool": "B", "count": 2, "icon": "figure" },
+    { "slotId": "st-epic-norm-b-2", "name": "Плюш «Дружок из подвала» 20см",              "tier": "Epic",      "variant": "Normal", "pool": "B", "count": 2, "icon": "plush" },
+    { "slotId": "st-epic-norm-b-3", "name": "Подарочный набор «Выживальщик 80s»",         "tier": "Epic",      "variant": "Normal", "pool": "B", "count": 1, "icon": "giftbox" },
+    { "slotId": "st-epic-norm-c-1", "name": "Premium-фигурка «Девочка с силой скейтборд»","tier": "Epic",      "variant": "Normal", "pool": "C", "count": 2, "icon": "figure" },
+
+    { "slotId": "st-leg-norm-c-1", "name": "Большая фигурка «Главный Монстр из Изнанки» 25+см", "tier": "Legendary", "variant": "Normal", "pool": "C", "count": 1, "icon": "figure" },
+    { "slotId": "st-leg-norm-c-2", "name": "Collectible бокс «Дневник пропавшего друга»",       "tier": "Legendary", "variant": "Normal", "pool": "C", "count": 1, "icon": "giftbox" },
+    { "slotId": "st-leg-norm-c-3", "name": "Плюш «Девочка с силой премиум» 30+см",              "tier": "Legendary", "variant": "Normal", "pool": "C", "count": 1, "icon": "plush" }
+  ],
+  "stickers": [
+    { "stickerId": "st-stk-1", "name": "Логотип лаборатории" },
+    { "stickerId": "st-stk-2", "name": "Велосипед под закатом" },
+    { "stickerId": "st-stk-3", "name": "Монстр из Изнанки силуэт" },
+    { "stickerId": "st-stk-4", "name": "80s vintage кассета" },
+    { "stickerId": "st-stk-5", "name": "Фонарик шерифа" }
+  ]
+}

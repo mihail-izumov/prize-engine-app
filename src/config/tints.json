@@ -1,0 +1,16 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "source": "PWA-Task-v2 §0 + STRATEGY-Visual-Identity §3",
+    "description": "Reveal-tint палитра per IP. Платформенный UI — чёрно-белый (anti-pattern compliance). Цвет появляется ТОЛЬКО в reveal-overlay как отсылка к IP. В пилоте только ST. PKM/RICK добавляются M4+."
+  },
+  "ST": {
+    "flashCenter": "#A8704A",
+    "flashOuter":  "#A8704A22",
+    "cardBorder":  "#8A5C3D",
+    "cardSurface": "#1A1612",
+    "badgeText":   "#000000",
+    "charges":     "#B8845A",
+    "description": "Stranger Things — warm muted ochre/umber, отсылка к красному логотипу, но приглушённо"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "_meta": {
+    "version": "1.1",
+    "source": "CHARGES-CATALOG v1.1 + PWA-Task-v2 §6",
+    "description": "Цены подарков в зарядах по тирам. Курс 0.43 ₽/⚡. Exchange = 80% от Buy (20% спред = маржа системы). Gold = chase-only, нет в каталоге."
+  },
+  "buyPrice": {
+    "JUNK":      100,
+    "Common":    230,
+    "Rare":      580,
+    "Epic":      1630,
+    "Legendary": 3490
+  },
+  "exchangeDiscount": 0.80,
+  "rubPerCharge": 0.43,
+  "baseChargesPerScan": 300,
+  "lastOneBonus": 500,
+  "spark": {
+    "probability": 0.25,
+    "bonusCharges": 100,
+    "trigger": "exchange"
+  }
+}
