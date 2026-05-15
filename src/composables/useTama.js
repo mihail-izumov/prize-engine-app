@@ -12,6 +12,7 @@
 //   tama.wakeUp()
 //   tama.dismissBubble()
 //   tama.reset()
+//   tama.replayOnboarding()
 //
 // Reactive reads:
 //   tama.currentState    — ref<string>
@@ -19,6 +20,7 @@
 //   tama.bubbleVisible   — ref<boolean>
 //   tama.isHidden        — ref<boolean>
 //   tama.onboardingLookUp — ref<boolean>
+//   tama.history         — ref<Array<{ from, to, ts, hadBubble }>> (max 5, newest first)
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { ref, watch } from 'vue'
@@ -44,6 +46,7 @@ export const STATES = {
 
 const IDLE_TIMEOUT_MS       = 30_000
 const BUBBLE_DELAY_MS       = 200
+const HISTORY_LIMIT         = 5
 const PERSIST_KEY           = 'mascot:isHidden:v1'
 const FIRST_TIME_KEY        = 'mascot:isFirstTimeUser:v1'
 const ONBOARDING_INTERVAL_MS = 4500
@@ -199,6 +202,17 @@ const bubble           = ref(null)    // { message, subtitle, key } | null
 const bubbleVisible    = ref(false)
 const isHidden         = ref(false)
 const onboardingLookUp = ref(false)
+const history          = ref([])      // [{ from, to, ts, hadBubble }], max HISTORY_LIMIT
+
+// Push a transition entry to history, keeping only the last HISTORY_LIMIT items.
+// Matches React reducer behavior in mascot-phase1.jsx (TRIGGER, AUTO_RETURN_IDLE,
+// GO_SLEEPY cases).
+function pushHistory(from, to, hadBubble) {
+  history.value = [
+    { from, to, ts: Date.now(), hadBubble },
+    ...history.value,
+  ].slice(0, HISTORY_LIMIT)
+}
 
 // ── Timers (module-level, not per-component) ─────────────────────────────
 let idleTimer        = null
@@ -216,6 +230,7 @@ function resetIdleTimer() {
   if (currentState.value === 'idle') {
     idleTimer = setTimeout(() => {
       if (currentState.value === 'idle') {
+        pushHistory('idle', 'sleepy', false)
         currentState.value = 'sleepy'
       }
     }, IDLE_TIMEOUT_MS)
@@ -251,6 +266,9 @@ function trigger(newState, opts = {}) {
     ? explicitMessage
     : randomPhrase(newState, vars || {})
 
+  // ── History ── (matches React reducer TRIGGER case)
+  pushHistory(currentState.value, newState, Boolean(message))
+
   // ── Update state ──
   currentState.value = newState
 
@@ -269,6 +287,7 @@ function trigger(newState, opts = {}) {
       const returnFrom = newState
       autoReturnTimer = setTimeout(() => {
         if (currentState.value === returnFrom) {
+          pushHistory(returnFrom, 'idle', false)
           currentState.value = 'idle'
         }
       }, dur)
@@ -302,6 +321,8 @@ function goToSleep() {
   if (bubbleShowTimer) clearTimeout(bubbleShowTimer)
   bubbleVisible.value = false
   bubble.value = null
+  // Manual sleep — push transition to history (matches React TRIGGER dispatch)
+  pushHistory(currentState.value, 'sleepy', false)
   isHidden.value = true
   currentState.value = 'sleepy'
 }
@@ -309,6 +330,7 @@ function goToSleep() {
 function wakeUp() {
   isHidden.value = false
   const phrase = randomPhrase('waking')
+  // wakeUp's trigger('wave') will push its own history entry
   trigger('wave', { message: phrase, duration: 2800 })
 }
 
@@ -327,6 +349,7 @@ function reset() {
   bubble.value = null
   bubbleVisible.value = false
   onboardingLookUp.value = false
+  history.value = []
   // isHidden preserved intentionally (same as React FORCE_RESET)
 }
 
@@ -362,6 +385,31 @@ function runOnboarding() {
       }
     }, 250)
   }, totalMs + 2500)
+}
+
+/**
+ * Replay the onboarding sequence. Clears the first-time-user flag so it
+ * runs as if it were the first visit, then dispatches the 5-phrase sequence.
+ * Used by the Debug panel "Mascot" tab for manual verification.
+ */
+function replayOnboarding() {
+  // Clear any pending timers / current bubble first
+  if (idleTimer) clearTimeout(idleTimer)
+  if (bubbleShowTimer) clearTimeout(bubbleShowTimer)
+  if (bubbleHideTimer) clearTimeout(bubbleHideTimer)
+  if (autoReturnTimer) clearTimeout(autoReturnTimer)
+  bubble.value = null
+  bubbleVisible.value = false
+  onboardingLookUp.value = false
+  // Reset persistence flag so the saveFirstTime(false) call inside runOnboarding
+  // still matches semantics (we "re-experience" first-time)
+  saveFirstTime(true)
+  // If currently sleeping — wake up first, otherwise onboarding plays under the box
+  if (currentState.value === 'sleepy' || isHidden.value) {
+    isHidden.value = false
+    currentState.value = 'idle'
+  }
+  runOnboarding()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -400,6 +448,7 @@ export function useTama() {
     bubbleVisible,
     isHidden,
     onboardingLookUp,
+    history,
 
     // Actions
     trigger,
@@ -407,5 +456,6 @@ export function useTama() {
     wakeUp,
     dismissBubble,
     reset,
+    replayOnboarding,
   }
 }

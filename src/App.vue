@@ -63,6 +63,10 @@ const scannedCount = ref(0)
 const scanLog = ref([])
 const scannedQrs = reactive(new Set())
 const debugPanelOpen = ref(false)
+// Phase 4: which tab is active inside DebugPanel — used by mascotZone to
+// keep the mascot rendered while on the 'mascot' debug tab (so the developer
+// can visually verify each trigger). DebugPanel emits 'tab-change'.
+const debugActiveTab = ref('qrs')
 const statsOpen = ref(false)
 const aboutOpen = ref(false)
 const cartBadgePing = ref(0)
@@ -78,11 +82,16 @@ const tama = useTama()
 
 // ── Phase 4: Mascot zone logic ──────────────────────────────────────────
 // Scanner, active reveal, debug panel = gambling zone → mascot hidden.
-// Everything else = loyalty zone → mascot visible.
-const mascotZone = computed(() =>
-  activeTab.value === 'scanner' || reveal.value || debugPanelOpen.value
-    ? 'gambling' : 'loyalty'
-)
+// Exception: when the debug panel is open AND user is on the 'mascot' tab,
+// keep the mascot visible — that tab exists specifically to test mascot
+// reactions visually. This is a deliberate softening of TAMA-MASCOT-GUIDE
+// Rule 6 ("Tama отсутствует в gambling-зонах") for the debug tool only,
+// not production UX.
+const mascotZone = computed(() => {
+  if (activeTab.value === 'scanner' || reveal.value) return 'gambling'
+  if (debugPanelOpen.value && debugActiveTab.value !== 'mascot') return 'gambling'
+  return 'loyalty'
+})
 
 // ── Phase 4: Trigger wrapper — routes mascotState/mascotPhrase to Tama ──
 // Reads mascotState/mascotPhrase from evaluateTriggers() results and
@@ -498,6 +507,7 @@ function handleResetPartition() {
       @close="debugPanelOpen = false"
       @force-scan="handleForceScan"
       @reset-partition="handleResetPartition"
+      @tab-change="debugActiveTab = $event"
     />
 
     <!-- Phase 3B: AboutModal -->

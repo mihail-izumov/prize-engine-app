@@ -251,57 +251,70 @@ const lookUpClass = computed(() => tama.onboardingLookUp.value ? 'mascot-look-up
       :style="{ ...positionStyle, transition: 'bottom 240ms ease' }"
     >
       <div class="relative">
-        <!-- ── Speech Bubble (STRATEGY §6.3: japanese envelope style) ── -->
+        <!-- ── Speech Bubble (STRATEGY-Visual-Identity §6.3: japanese envelope) ── -->
+        <!-- Two-layer construction:
+             1. Outer = positioning (mobile: centered; desktop: offset right
+                so the bubble sits above the mascot's right edge).
+             2. Inner = scale + fade animation (per §6.3.2, 200ms ease-out).
+             Tail position tracks placement — centered on mobile, offset right
+             on desktop — so it visually points down toward the mascot. -->
         <div
           v-if="tama.bubble.value"
-          role="status"
-          aria-live="polite"
-          class="absolute bottom-full left-1/2 mb-2 cursor-pointer pointer-events-auto"
-          :class="tama.bubbleVisible.value ? 'bubble-enter' : 'bubble-exit'"
-          :style="{ transform: 'translateX(-50%)' }"
-          @click="tama.dismissBubble()"
+          class="absolute bottom-full mb-2 pointer-events-auto"
+          :class="isMobile ? 'left-1/2' : 'right-2'"
+          :style="isMobile ? { transform: 'translateX(-50%)' } : {}"
         >
           <div
-            class="relative px-3 py-2"
-            :style="{
-              background: '#FFFFFF',
-              border: '2.5px solid #000000',
-              borderRadius: '3px',
-              maxWidth: '240px',
-              minWidth: '120px',
-            }"
+            role="status"
+            aria-live="polite"
+            class="cursor-pointer"
+            :class="tama.bubbleVisible.value ? 'bubble-enter' : 'bubble-exit'"
+            :style="{ transformOrigin: isMobile ? '50% 100%' : '85% 100%' }"
+            @click="tama.dismissBubble()"
           >
-            <div class="text-sm font-semibold leading-tight" style="color: #000000">
-              {{ tama.bubble.value.message }}
-            </div>
             <div
-              v-if="tama.bubble.value.subtitle"
-              class="text-xs mt-0.5 leading-snug"
-              style="color: #4A4A4A"
+              class="relative px-3 py-2"
+              :style="{
+                background: '#FFFFFF',
+                border: '2.5px solid #000000',
+                borderRadius: '3px',
+                maxWidth: '240px',
+                minWidth: '120px',
+              }"
             >
-              {{ tama.bubble.value.subtitle }}
-            </div>
+              <div class="text-sm font-semibold leading-tight" style="color: #000000">
+                {{ tama.bubble.value.message }}
+              </div>
+              <div
+                v-if="tama.bubble.value.subtitle"
+                class="text-xs mt-0.5 leading-snug"
+                style="color: #4A4A4A"
+              >
+                {{ tama.bubble.value.subtitle }}
+              </div>
 
-            <!-- Tail: japanese envelope cut (diagonal notch, not triangle) -->
-            <svg
-              viewBox="-1 -2 22 16"
-              width="18"
-              height="14"
-              class="absolute left-1/2 -translate-x-1/2"
-              style="bottom: -13px; overflow: visible"
-              aria-hidden="true"
-            >
-              <!-- White mask covering bubble border -->
-              <path d="M 3 -2 L 3 0 L 9 10 L 11 10 L 17 0 L 17 -2 Z" fill="white" />
-              <!-- Stroked diagonal cut — sharp, no rounded tip (envelope feel) -->
-              <path
-                d="M 3 0 L 10 10 L 17 0"
-                fill="none"
-                stroke="black"
-                stroke-width="2.5"
-                stroke-linejoin="miter"
-              />
-            </svg>
+              <!-- Tail: japanese envelope cut (diagonal notch, not triangle) -->
+              <svg
+                viewBox="-1 -2 22 16"
+                width="18"
+                height="14"
+                class="absolute"
+                :class="isMobile ? 'left-1/2 -translate-x-1/2' : 'right-6'"
+                style="bottom: -13px; overflow: visible"
+                aria-hidden="true"
+              >
+                <!-- White mask covering bubble border -->
+                <path d="M 3 -2 L 3 0 L 9 10 L 11 10 L 17 0 L 17 -2 Z" fill="white" />
+                <!-- Stroked diagonal cut — sharp, no rounded tip (envelope feel) -->
+                <path
+                  d="M 3 0 L 10 10 L 17 0"
+                  fill="none"
+                  stroke="black"
+                  stroke-width="2.5"
+                  stroke-linejoin="miter"
+                />
+              </svg>
+            </div>
           </div>
         </div>
 
@@ -620,13 +633,16 @@ const lookUpClass = computed(() => tama.onboardingLookUp.value ? 'mascot-look-up
 }
 
 /* ── Bubble in/out ────────────────────────────────────────────────── */
+/* Pure scale + fade per STRATEGY-Visual-Identity §6.3.2.
+   Positioning (translateX(-50%) on mobile) is now applied to the OUTER
+   wrapper div, so the keyframe doesn't need to bake it in. */
 @keyframes mascot-bubble-in {
-  0%   { opacity: 0; transform: translateX(-50%) scale(0.9); }
-  100% { opacity: 1; transform: translateX(-50%) scale(1); }
+  0%   { opacity: 0; transform: scale(0.9); }
+  100% { opacity: 1; transform: scale(1); }
 }
 @keyframes mascot-bubble-out {
-  0%   { opacity: 1; transform: translateX(-50%) scale(1); }
-  100% { opacity: 0; transform: translateX(-50%) scale(0.95); }
+  0%   { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.95); }
 }
 
 /* ── Shadow hop (charge-up only) ─────────────────────────────────── */
