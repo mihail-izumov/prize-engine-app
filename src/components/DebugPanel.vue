@@ -97,31 +97,49 @@ const MASCOT_STATE_BUTTONS = [
 ]
 
 function runMascotState(id) {
+  ensureVisible()
   tama.trigger(id)
 }
 
 // Game scenarios — copied 1:1 from mascot-phase1.jsx GameScenario (lines 2046-2062).
 function runCommonScenario() {
+  ensureVisible()
   tama.trigger('charge-up', {
     vars: { amount: 300, balance: 1240, next_tier_gap: 480 },
     duration: 4000,
   })
 }
 function runLegendaryScenario() {
+  ensureVisible()
   tama.trigger('charge-up', {
     vars: { amount: 500, balance: 4800, next_tier_gap: 200 },
     duration: 4000,
   })
 }
 function runMythicScenario() {
+  ensureVisible()
   tama.trigger('wow', { duration: 5000 })
 }
 
 function onMascotReset() {
+  // Reset also un-hides in debug context — otherwise the developer would
+  // reset to "idle" but still see the sleeping-box if isHidden is true
+  // from a previous session (it persists via localStorage).
+  ensureVisible()
   tama.reset()
 }
 function onReplayOnboarding() {
   tama.replayOnboarding()
+}
+
+// Force the mascot visible before any debug-triggered state change.
+// This is debug-specific: the developer clicks a button to SEE the
+// reaction. If isHidden was true (persisted from a previous session
+// where the user tapped the sleep button), the mascot would silently
+// stay in the sleeping-box even after trigger() changes currentState —
+// because the render switch uses isHidden first, currentState second.
+function ensureVisible() {
+  if (tama.isHidden.value) tama.isHidden.value = false
 }
 
 // History entries reverse-formatted for display (newest first is already
@@ -198,6 +216,7 @@ function whenLabel(when) {
 // state + phrase, without scrolling back to the manual triggers section.
 function previewTrigger(trigger) {
   if (!trigger.mascotState) return // silent triggers do nothing
+  ensureVisible()
   tama.trigger(trigger.mascotState, {
     message: trigger.mascotPhrase || undefined,
   })
@@ -306,14 +325,14 @@ async function hardReload() {
 
       <!-- Content area. No internal scroll — window scrolls naturally.
            pb is dynamic to clear fixed-bottom elements:
-           • Non-mascot tabs: pb-24 (96px) clears the red DEV banner
-             (~70px on iPhone: 36px inner + safe-area-inset-bottom 34px).
-           • Mascot tab: pb-[260px] clears the plinth top (~230px from
-             physical bottom) so last content row doesn't visually collide
-             with mascot/plinth area when scrolled to bottom. -->
+           • Non-mascot tabs: pb-24 (96px) clears the red DEV banner alone
+             (~61px on iPhone: 27px inner + safe-area-inset-bottom 34px).
+           • Mascot tab: pb-[280px] clears the full plinth+banner stack
+             (~241px on iPhone) with ~40px breathing room so last content
+             row sits comfortably above the plinth top edge. -->
       <div
         class="px-4 pt-4"
-        :class="activeSection === 'mascot' ? 'pb-[260px]' : 'pb-24'"
+        :class="activeSection === 'mascot' ? 'pb-[280px]' : 'pb-24'"
       >
 
         <!-- ═══ QRS TAB ═══ -->
@@ -1094,42 +1113,48 @@ async function hardReload() {
         </div>
       </div>
 
-    <!-- ─── Fixed white plinth behind mascot (Mascot tab only) ─────────
-         z-49 sits below mascot (z-50) but above all scrollable content.
-         Mascot lives at bottom: env(safe-area-inset-bottom) + 70px and
-         is ~120-160px tall, so SVG vertical span ≈ 70..230 from bottom.
-         Plinth at bottom = red-banner-height (36px inner) + safe-area
-         and height 160px → covers 70..230 area. Mascot sits cleanly on
-         white. -->
+    <!-- ─── Fixed bottom area: plinth (Mascot tab only) + DEV indicator ──
+         Single fixed container at bottom: 0 — plinth stacks directly on
+         top of the red banner with no gap by construction. z-49 sits
+         below the mascot (z-50) so the mascot visually rides on top of
+         the plinth. Container's own background is white (matches plinth
+         for non-mascot tabs where plinth is hidden — only red banner
+         shows at viewport bottom). -->
     <div
-      v-if="activeSection === 'mascot'"
-      class="fixed left-0 right-0"
-      style="
-        bottom: calc(env(safe-area-inset-bottom, 0px) + 36px);
-        height: 160px;
-        background: #FFFFFF;
-        z-index: 49;
-        border-top: 1px solid #E0E0E0;
-        border-bottom: 1px solid #E0E0E0;
-      "
-      aria-hidden="true"
-    ></div>
-
-    <!-- ─── Fixed red "DEV MODE" indicator at very bottom ──────────────
-         z-30 (below plinth z-49 and mascot z-50 — they don't overlap,
-         the banner is below them). Inner padding-bottom includes
-         safe-area-inset-bottom so text sits above iPhone home indicator. -->
-    <div
-      class="fixed left-0 right-0 text-center font-mono text-[10px] uppercase tracking-[0.3em]"
-      style="
-        bottom: 0;
-        z-index: 30;
-        background: #DC2626;
-        color: #000000;
-        padding: 6px 16px calc(env(safe-area-inset-bottom, 0px) + 6px);
-      "
+      class="fixed left-0 right-0 flex flex-col"
+      style="bottom: 0; z-index: 49"
     >
-      ⚠ Режим разработки · debug
+      <!-- White plinth — behind mascot, only on Mascot tab.
+           180px height covers mascot SVG full vertical span:
+             • Mobile: bottom at safe-area+70, size 120 → top at ~224
+             • Charge-up scale 1.0→1.15 adds ~9px overshoot upward
+             • Desktop: bottom at safe-area+16, size 160 → top at ~176
+           Plus red-banner ~27+safe-area below = total container ~241+safe
+           on iPhone — fully contains the mascot in all states. -->
+      <div
+        v-if="activeSection === 'mascot'"
+        style="
+          height: 180px;
+          background: #FFFFFF;
+          border-top: 1px solid #E0E0E0;
+          border-bottom: 1px solid #E0E0E0;
+        "
+        aria-hidden="true"
+      ></div>
+
+      <!-- Red "DEV MODE" indicator at the very bottom.
+           padding-bottom includes safe-area-inset-bottom so the text
+           sits above the iPhone home indicator. -->
+      <div
+        class="text-center font-mono text-[10px] uppercase tracking-[0.3em]"
+        style="
+          background: #DC2626;
+          color: #000000;
+          padding: 6px 16px calc(env(safe-area-inset-bottom, 0px) + 6px);
+        "
+      >
+        ⚠ Режим разработки · debug
+      </div>
     </div>
   </div>
 </template>
