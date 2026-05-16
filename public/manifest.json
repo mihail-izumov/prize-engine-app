@@ -1,22 +1,36 @@
 {
-  "name": "Prize Engine",
-  "short_name": "Prize",
-  "description": "Программа лояльности Prize Engine",
+  "name": "Tama",
+  "short_name": "Tama",
+  "description": "Tama — программа лояльности Prize Engine",
   "start_url": "/prize-engine-app/",
   "display": "standalone",
-  "background_color": "#EEEEEE",
+  "background_color": "#000000",
   "theme_color": "#000000",
   "orientation": "portrait",
   "icons": [
     {
       "src": "/prize-engine-app/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/prize-engine-app/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/prize-engine-app/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/prize-engine-app/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     },
     {
       "src": "/prize-engine-app/favicon.svg",

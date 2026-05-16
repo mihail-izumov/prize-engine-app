@@ -3,13 +3,16 @@
 // Strategy: cache-first for static assets, network-first for navigation.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const CACHE_NAME = 'prize-engine-v1';
+const CACHE_NAME = 'prize-engine-v2';
 const BASE = '/prize-engine-app/';
 const STATIC_ASSETS = [
   BASE,
   BASE + 'index.html',
   BASE + 'favicon.svg',
   BASE + 'icons.svg',
+  BASE + 'icon-192.png',
+  BASE + 'icon-512.png',
+  BASE + 'apple-touch-icon.png',
   BASE + 'manifest.json',
 ];
 

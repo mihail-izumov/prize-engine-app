@@ -88,20 +88,34 @@ const tama = useTama()
 // Rule 6 ("Tama отсутствует в gambling-зонах") for the debug tool only,
 // not production UX.
 const mascotZone = computed(() => {
+  // The Mascot debug tab is the visual verification tool — it MUST show
+  // the mascot regardless of what the underlying screen is. Without this
+  // override, activeTab='scanner' (the default landing tab) would force
+  // 'gambling' and the developer couldn't see mascot reactions even after
+  // switching to the Mascot tab. Highest priority.
+  if (debugPanelOpen.value && debugActiveTab.value === 'mascot') return 'loyalty'
+
+  // Normal gambling zones — scanner screen, active reveal animation.
   if (activeTab.value === 'scanner' || reveal.value) return 'gambling'
-  if (debugPanelOpen.value && debugActiveTab.value !== 'mascot') return 'gambling'
+
+  // Debug panel open on any non-mascot tab — hide mascot to avoid noise.
+  if (debugPanelOpen.value) return 'gambling'
+
   return 'loyalty'
 })
 
 // ── Phase 4: Trigger wrapper — routes mascotState/mascotPhrase to Tama ──
-// Reads mascotState/mascotPhrase from evaluateTriggers() results and
-// dispatches to tama.trigger(). engine/triggers.js stays untouched.
+// Reads __mascotState/__mascotPhrase from evaluateTriggers() results and
+// fires tama.trigger() in addition to the regular toast pipeline.
+// NB: evaluateTriggers() prefixes meta fields with double-underscore
+// (see engine/triggers.js line 487-488) — using bare `mascotState` here
+// silently no-ops, the mascot would never react to in-app events.
 function fireTriggersWithMascot(triggers, pushToastFn, pushActivityFn) {
   fireTriggers(triggers, pushToastFn, pushActivityFn)
   for (const t of triggers) {
-    if (t.mascotState) {
-      tama.trigger(t.mascotState, {
-        message: t.mascotPhrase || undefined,
+    if (t.__mascotState) {
+      tama.trigger(t.__mascotState, {
+        message: t.__mascotPhrase || undefined,
       })
     }
   }

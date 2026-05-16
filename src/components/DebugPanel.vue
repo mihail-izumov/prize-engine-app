@@ -23,7 +23,7 @@ import { Bug, X, Trash2, RefreshCw, RotateCw, Eraser, Info } from 'lucide-vue-ne
 import { usePartition } from '../composables/usePartition.js'
 import { useSeries } from '../composables/useSeries.js'
 import { useCards } from '../composables/useCards.js'
-import { useTama, STATES as TAMA_STATES } from '../composables/useTama.js'
+import { useTama, STATES as TAMA_STATES, TAMA_PHRASES, TAMA_ONBOARDING } from '../composables/useTama.js'
 import {
   TIER_ORDER, TIER_META, CARD_META,
   SLOT_CATALOG, enginePoolToUiCollection,
@@ -32,6 +32,7 @@ import {
   buildQrForBox, summarizeStateByTier,
   fmtCharges, slotInfoById,
 } from '../engine/state-helpers.js'
+import { TRIGGER_CONFIG } from '../engine/triggers.js'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -132,6 +133,80 @@ function onReplayOnboarding() {
 const mascotHistory = computed(() => tama.history.value)
 const currentStateMeta = computed(() => TAMA_STATES[tama.currentState.value])
 
+// ─── Phrase Bank ───
+// Reference list: every phrase Tama can say, grouped by state.
+// Order matches MASCOT_STATE_BUTTONS for visual continuity.
+// 'waking' is a pseudo-state used only after wakeUp() — included separately.
+const phraseBank = computed(() => {
+  const main = MASCOT_STATE_BUTTONS.map(b => ({
+    id: b.id,
+    label: b.label,
+    phrases: TAMA_PHRASES[b.id] || [],
+  }))
+  return [
+    ...main,
+    { id: 'waking',     label: 'Waking (after sleep)', phrases: TAMA_PHRASES.waking || [] },
+    { id: 'onboarding', label: 'Onboarding (first visit)', phrases: TAMA_ONBOARDING || [] },
+  ]
+})
+
+// ─── Trigger Map ───
+// Reads TRIGGER_CONFIG from engine/triggers.js. Each entry shows:
+//   • event (`when` field) — what real-world action fires this
+//   • trigger id — human-readable trigger name
+//   • mascot state — what Tama does, or '—' if explicitly silent (null)
+//   • phrase — what Tama says (or '—' if silent)
+// Grouped by `when` so visually related triggers cluster together.
+const triggerMap = computed(() => {
+  const groups = {}
+  for (const t of TRIGGER_CONFIG) {
+    if (!groups[t.when]) groups[t.when] = []
+    groups[t.when].push({
+      id: t.id,
+      mascotState: t.mascotState,
+      mascotPhrase: t.mascotPhrase,
+    })
+  }
+  // Stable order matching where they appear in TRIGGER_CONFIG.
+  const order = []
+  const seen = new Set()
+  for (const t of TRIGGER_CONFIG) {
+    if (!seen.has(t.when)) {
+      seen.add(t.when)
+      order.push(t.when)
+    }
+  }
+  return order.map(when => ({ when, triggers: groups[when] }))
+})
+
+// Friendly label for event types — what does the `when` field mean in plain RU.
+const WHEN_LABELS = {
+  scan_error:         'Скан с ошибкой',
+  scan_success:       'Успешный скан',
+  take:               'Забрать приз',
+  exchange:           'Обмен на заряды',
+  spark:              'Spark-бонус',
+  purchase:           'Покупка за заряды',
+  power_activate:     'Активация карты силы',
+  collection_change:  'Изменение коллекции',
+  scan_count_change:  'Веха по числу сканов',
+  charges_change:     'Веха по зарядам',
+  partition_change:   'Изменение партии',
+}
+function whenLabel(when) {
+  return WHEN_LABELS[when] || when
+}
+
+// Trigger phrase preview — fires the trigger's mascot reaction from the map.
+// Lets developer click on any trigger row to see Tama react with the configured
+// state + phrase, without scrolling back to the manual triggers section.
+function previewTrigger(trigger) {
+  if (!trigger.mascotState) return // silent triggers do nothing
+  tama.trigger(trigger.mascotState, {
+    message: trigger.mascotPhrase || undefined,
+  })
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SYSTEM TAB — iOS PWA helpers (standalone mode has no browser reload UI)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -173,12 +248,22 @@ async function hardReload() {
 <template>
   <div
     v-if="open"
-    class="fixed inset-0 z-40 flex items-stretch"
-    style="background: rgba(0,0,0,0.92)"
+    class="fixed inset-0 z-40 flex"
+    :class="activeSection === 'mascot' ? 'items-start' : 'items-stretch'"
+    :style="{
+      background: activeSection === 'mascot'
+        ? 'rgba(0,0,0,0.55)'
+        : 'rgba(0,0,0,0.92)',
+    }"
   >
     <div
-      class="flex-1 max-w-[420px] mx-auto flex flex-col"
-      style="background: #FFFFFF; border-left: 1px solid #C8C8C8; border-right: 1px solid #C8C8C8"
+      class="flex-1 max-w-[420px] mx-auto flex flex-col w-full"
+      :style="{
+        background: '#FFFFFF',
+        borderLeft: '1px solid #C8C8C8',
+        borderRight: '1px solid #C8C8C8',
+        maxHeight: activeSection === 'mascot' ? '60vh' : 'none',
+      }"
     >
       <!-- DEV MODE banner — единственный красный в платформенном UI -->
       <div
@@ -788,6 +873,128 @@ async function hardReload() {
                   Wake up
                 </button>
               </div>
+            </div>
+          </section>
+
+          <!-- ─── Phrase Bank ─── -->
+          <!-- All phrases Tama can say, grouped by state. Reference only,
+               clicking a state header fires that state for visual preview. -->
+          <section class="space-y-2">
+            <div class="font-mono text-[10px] uppercase tracking-[0.2em]" style="color: #4A4A4A">
+              Банк фраз
+            </div>
+            <div class="text-[11px] leading-relaxed mb-2" style="color: #8A8A8A">
+              Все реплики из <code style="background: #EEEEEE; padding: 1px 4px; border-radius: 2px; color: #000000">TAMA_PHRASES</code>.
+              При триггере выбирается случайная.
+            </div>
+            <div
+              v-for="group in phraseBank"
+              :key="group.id"
+              class="p-3"
+              style="background: #FFFFFF; border: 1px solid #C8C8C8; border-radius: 4px"
+            >
+              <div class="flex items-center justify-between mb-1.5">
+                <code class="px-1.5 py-0.5 rounded text-xs" style="background: #000000; color: #FFFFFF">
+                  {{ group.id }}
+                </code>
+                <span class="text-[10px]" style="color: #8A8A8A">
+                  {{ group.label }} · {{ group.phrases.length }}
+                </span>
+              </div>
+              <ul v-if="group.phrases.length" class="space-y-0.5 text-xs">
+                <li
+                  v-for="(p, i) in group.phrases"
+                  :key="i"
+                  class="flex items-start gap-2"
+                  style="color: #000000"
+                >
+                  <span class="font-mono shrink-0" style="color: #C8C8C8">{{ i + 1 }}.</span>
+                  <span class="leading-snug">"{{ p }}"</span>
+                </li>
+              </ul>
+              <div v-else class="text-xs italic" style="color: #C8C8C8">
+                нет фраз (молчаливое состояние)
+              </div>
+            </div>
+          </section>
+
+          <!-- ─── Trigger Map ─── -->
+          <!-- Reads TRIGGER_CONFIG from engine/triggers.js. Each row maps
+               event → state → phrase, grouped by `when` event type.
+               Tap a row to preview Tama's reaction (uses configured phrase,
+               not a random one from TAMA_PHRASES). -->
+          <section class="space-y-2">
+            <div class="font-mono text-[10px] uppercase tracking-[0.2em]" style="color: #4A4A4A">
+              Карта триггеров
+            </div>
+            <div class="text-[11px] leading-relaxed mb-2" style="color: #8A8A8A">
+              Событие → состояние → фраза. Источник: <code style="background: #EEEEEE; padding: 1px 4px; border-radius: 2px; color: #000000">engine/triggers.js</code>.
+              Клик по строке — превью реакции маскота.
+            </div>
+            <div
+              v-for="group in triggerMap"
+              :key="group.when"
+              class="overflow-hidden"
+              style="background: #FFFFFF; border: 1px solid #C8C8C8; border-radius: 4px"
+            >
+              <!-- Group header — event type with friendly label -->
+              <div
+                class="px-3 py-1.5 flex items-center justify-between"
+                style="background: #EEEEEE; border-bottom: 1px solid #C8C8C8"
+              >
+                <code class="text-xs" style="color: #000000">{{ group.when }}</code>
+                <span class="text-[10px]" style="color: #8A8A8A">
+                  {{ whenLabel(group.when) }}
+                </span>
+              </div>
+
+              <!-- Rows -->
+              <button
+                v-for="trig in group.triggers"
+                :key="trig.id"
+                type="button"
+                class="w-full text-left px-3 py-2 transition-colors flex flex-col gap-0.5"
+                :disabled="!trig.mascotState"
+                :style="{
+                  borderTop: '1px solid #EEEEEE',
+                  cursor: trig.mascotState ? 'pointer' : 'default',
+                  opacity: trig.mascotState ? 1 : 0.55,
+                }"
+                @click="previewTrigger(trig)"
+              >
+                <div class="flex items-center gap-2 flex-wrap">
+                  <code class="text-[11px] font-mono" style="color: #000000">{{ trig.id }}</code>
+                  <span style="color: #C8C8C8">→</span>
+                  <code
+                    v-if="trig.mascotState"
+                    class="px-1.5 py-0.5 rounded text-[10px]"
+                    style="background: #000000; color: #FFFFFF"
+                  >
+                    {{ trig.mascotState }}
+                  </code>
+                  <span
+                    v-else
+                    class="text-[10px] italic"
+                    style="color: #8A8A8A"
+                  >
+                    тишина
+                  </span>
+                </div>
+                <div
+                  v-if="trig.mascotPhrase"
+                  class="text-[11px] leading-snug"
+                  style="color: #4A4A4A"
+                >
+                  "{{ trig.mascotPhrase }}"
+                </div>
+                <div
+                  v-else-if="trig.mascotState"
+                  class="text-[10px] italic"
+                  style="color: #8A8A8A"
+                >
+                  фраза случайная из TAMA_PHRASES.{{ trig.mascotState }}
+                </div>
+              </button>
             </div>
           </section>
         </div>

@@ -56,7 +56,7 @@ const ONBOARDING_INTERVAL_MS = 4500
 // Template vars: {amount}, {balance}, {next_tier_gap}
 // ═══════════════════════════════════════════════════════════════════════════
 
-const TAMA_PHRASES = {
+export const TAMA_PHRASES = {
   idle: [
     'Тут тихо.',
     'Жду.',
@@ -146,7 +146,7 @@ const TAMA_PHRASES = {
   ],
 }
 
-const TAMA_ONBOARDING = [
+export const TAMA_ONBOARDING = [
   'Привет. Я Тама.',
   'Вижу, у тебя есть коробка.',
   'Открой — посмотрим, что внутри.',
