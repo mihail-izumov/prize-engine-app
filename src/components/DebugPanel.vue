@@ -35,7 +35,6 @@ import {
 import { TRIGGER_CONFIG } from '../engine/triggers.js'
 
 const props = defineProps({
-  open: { type: Boolean, default: false },
   scanLog: { type: Array, default: () => [] },
   scannedQrs: { type: Object, default: () => new Set() },
   serverSeed: { type: String, default: '' },
@@ -53,12 +52,9 @@ const activeSection = ref('qrs')
 
 // Notify parent when tab changes — App.vue uses this to decide whether
 // the mascot should be rendered live (only when 'mascot' tab is active).
+// `immediate: true` fires on mount so the parent's mascotZone is in sync
+// from the very first frame the debug page is shown.
 watch(activeSection, (v) => emit('tab-change', v), { immediate: true })
-// Also notify when the panel opens — so the parent's mascotZone is in sync
-// at the moment of opening, not waiting for the first manual tab switch.
-watch(() => props.open, (isOpen) => {
-  if (isOpen) emit('tab-change', activeSection.value)
-})
 
 // Build all 100 QR codes once
 const allQrs = computed(() => {
@@ -246,37 +242,26 @@ async function hardReload() {
 </script>
 
 <template>
-  <div
-    v-if="open"
-    class="fixed inset-0 z-40 flex"
-    :class="activeSection === 'mascot' ? 'items-start' : 'items-stretch'"
-    :style="{
-      background: activeSection === 'mascot'
-        ? 'rgba(0,0,0,0.55)'
-        : 'rgba(0,0,0,0.92)',
-    }"
-  >
+  <!--
+    Full-screen page replacing the active screen content (rendered from
+    App.vue's <main> via v-if). NOT a modal — TopBar and TabBar stay
+    visible, mascot floats over this content at fixed z-50 when on the
+    Mascot tab. No overlay backdrop, no max-h-mascot trick — those were
+    needed when this was a modal, now unnecessary.
+  -->
+  <div class="w-full">
+    <!-- DEV MODE banner — единственный красный в платформенном UI -->
     <div
-      class="flex-1 max-w-[420px] mx-auto flex flex-col w-full"
-      :style="{
-        background: '#FFFFFF',
-        borderLeft: '1px solid #C8C8C8',
-        borderRight: '1px solid #C8C8C8',
-        maxHeight: activeSection === 'mascot' ? '60vh' : 'none',
-      }"
+      class="px-4 py-1.5 text-center font-mono text-[10px] uppercase tracking-[0.3em]"
+      style="background: #DC2626; color: #000000"
     >
-      <!-- DEV MODE banner — единственный красный в платформенном UI -->
-      <div
-        class="px-4 py-1.5 text-center font-mono text-[10px] uppercase tracking-[0.3em]"
-        style="background: #DC2626; color: #000000"
-      >
-        ⚠ Режим разработки · debug
-      </div>
+      ⚠ Режим разработки · debug
+    </div>
 
-      <!-- Header -->
-      <div
-        class="flex items-center justify-between px-4 py-3"
-        style="border-bottom: 1px solid #C8C8C8"
+    <!-- Header -->
+    <div
+      class="flex items-center justify-between px-4 py-3"
+      style="background: #FFFFFF; border-bottom: 1px solid #C8C8C8"
       >
         <div class="flex items-center gap-2">
           <Bug :size="16" color="#000000" />
@@ -313,8 +298,18 @@ async function hardReload() {
         </button>
       </div>
 
-      <!-- Content -->
-      <div class="flex-1 overflow-y-auto px-4 py-4">
+      <!-- Content area. No internal scroll — window scrolls naturally
+           (we're not a modal anymore). pb is dynamic:
+           • non-mascot tabs: pb-28 (112px) clears the fixed TabBar (~94px
+             with iPhone safe-area).
+           • mascot tab: pb-[200px] additionally clears the mascot, which
+             floats fixed at ~170px from viewport bottom on Mascot tab.
+             Without this, the last content rows would visually overlap
+             the mascot's head. -->
+      <div
+        class="px-4 pt-4"
+        :class="activeSection === 'mascot' ? 'pb-[200px]' : 'pb-28'"
+      >
 
         <!-- ═══ QRS TAB ═══ -->
         <div v-if="activeSection === 'qrs'" class="space-y-4">
@@ -1093,6 +1088,5 @@ async function hardReload() {
           </div>
         </div>
       </div>
-    </div>
   </div>
 </template>

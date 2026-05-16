@@ -395,7 +395,13 @@ function handleReturnGift(gift) {
 }
 
 // ── UI handlers ──────────────────────────────────────────────────────────
-function onTabChange(id) { activeTab.value = id }
+function onTabChange(id) {
+  activeTab.value = id
+  // Switching app tabs while debug is open exits debug — TabBar acts as
+  // global navigation, so user expects it to leave debug context.
+  // The X button inside DebugPanel header also closes it.
+  if (debugPanelOpen.value) debugPanelOpen.value = false
+}
 function onToggleDebug() {
   if (!debugMode.value) debugMode.value = true
   debugPanelOpen.value = !debugPanelOpen.value
@@ -435,8 +441,13 @@ function handleResetPartition() {
     <!-- Active effects sticky badge -->
     <div
       v-if="(activeEffects.luckActive || activeEffects.doubleActive || activeEffects.forcePoolC) && activeTab !== 'scanner'"
-      class="sticky top-[60px] z-20"
-      style="background: #000000; color: #FFFFFF; border-bottom: 1px solid #000000"
+      class="sticky z-20"
+      :style="{
+        top: `calc(env(safe-area-inset-top, 0px) + 60px)`,
+        background: '#000000',
+        color: '#FFFFFF',
+        borderBottom: '1px solid #000000',
+      }"
     >
       <div class="px-4 py-1.5 max-w-[440px] mx-auto flex items-center gap-2">
         <Sparkles :size="12" color="#FFFFFF" />
@@ -446,11 +457,33 @@ function handleResetPartition() {
       </div>
     </div>
 
-    <main class="max-w-[440px] mx-auto relative z-10 pt-16">
-      <ScannerScreen    v-if="activeTab === 'scanner'"    :debug-mode="debugMode" @scan="handleScan" />
-      <CollectionScreen v-else-if="activeTab === 'collection'" @select-gift="onSelectGift" />
-      <GiftsScreen      v-else-if="activeTab === 'gifts'"      @claim-gift="onClaimGift" />
-      <PowersScreen     v-else-if="activeTab === 'powers'" />
+    <main
+      class="max-w-[440px] mx-auto relative z-10"
+      :style="{ paddingTop: `calc(env(safe-area-inset-top, 0px) + 4rem)` }"
+    >
+      <!-- Debug mode: full-screen page that replaces the active screen.
+           TopBar stays visible; TabBar stays visible (clicking any tab
+           closes debug, see onTabChange). Mascot floats over debug
+           content at fixed z-50 when on the Mascot debug tab (see
+           mascotZone). -->
+      <DebugPanel
+        v-if="debugPanelOpen && debugMode"
+        :scan-log="scanLog"
+        :scanned-qrs="scannedQrs"
+        :server-seed="serverSeed"
+        :client-seed="clientSeed"
+        :nonce="nonce"
+        @close="debugPanelOpen = false"
+        @force-scan="handleForceScan"
+        @reset-partition="handleResetPartition"
+        @tab-change="debugActiveTab = $event"
+      />
+      <template v-else>
+        <ScannerScreen    v-if="activeTab === 'scanner'"    :debug-mode="debugMode" @scan="handleScan" />
+        <CollectionScreen v-else-if="activeTab === 'collection'" @select-gift="onSelectGift" />
+        <GiftsScreen      v-else-if="activeTab === 'gifts'"      @claim-gift="onClaimGift" />
+        <PowersScreen     v-else-if="activeTab === 'powers'" />
+      </template>
     </main>
 
     <RevealOverlay @take="handleTake" @exchange="handleExchange" />
@@ -487,7 +520,12 @@ function handleResetPartition() {
         <!-- Stats header with back -->
         <div
           class="sticky top-0 z-10 flex items-center px-4 py-3"
-          style="background: rgba(26,26,26,0.96); backdrop-filter: blur(8px); border-bottom: 1px solid #C8C8C8"
+          style="
+            background: rgba(26,26,26,0.96);
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid #C8C8C8;
+            padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+          "
         >
           <button
             type="button"
@@ -509,20 +547,6 @@ function handleResetPartition() {
         />
       </div>
     </div>
-
-    <!-- Phase 3: DebugPanel -->
-    <DebugPanel
-      :open="debugPanelOpen && debugMode"
-      :scan-log="scanLog"
-      :scanned-qrs="scannedQrs"
-      :server-seed="serverSeed"
-      :client-seed="clientSeed"
-      :nonce="nonce"
-      @close="debugPanelOpen = false"
-      @force-scan="handleForceScan"
-      @reset-partition="handleResetPartition"
-      @tab-change="debugActiveTab = $event"
-    />
 
     <!-- Phase 3B: AboutModal -->
     <AboutModal :open="aboutOpen" @close="aboutOpen = false" />

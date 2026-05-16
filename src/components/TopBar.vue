@@ -15,7 +15,11 @@ const { currentSeries } = useSeries()
 <template>
   <header
     class="fixed top-0 left-0 right-0 z-30"
-    style="padding: 8px 12px 0; background: transparent; pointer-events: none"
+    style="
+      padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px 0;
+      background: transparent;
+      pointer-events: none;
+    "
   >
     <div
       class="max-w-[440px] mx-auto"

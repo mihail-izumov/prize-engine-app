@@ -49,7 +49,12 @@ function onClick(id) {
 <template>
   <nav
     class="fixed bottom-0 left-0 right-0 z-30"
-    style="background: rgba(26,26,26,0.96); backdrop-filter: blur(8px); border-top: 1px solid #C8C8C8"
+    style="
+      background: rgba(26,26,26,0.96);
+      backdrop-filter: blur(8px);
+      border-top: 1px solid #C8C8C8;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    "
   >
     <div class="max-w-[440px] mx-auto grid grid-cols-4">
       <button
