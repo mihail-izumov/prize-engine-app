@@ -244,24 +244,29 @@ async function hardReload() {
 <template>
   <!--
     Full-screen page replacing the active screen content (rendered from
-    App.vue's <main> via v-if). NOT a modal — TopBar and TabBar stay
-    visible, mascot floats over this content at fixed z-50 when on the
-    Mascot tab. No overlay backdrop, no max-h-mascot trick — those were
-    needed when this was a modal, now unnecessary.
+    App.vue's <main> via v-if). TopBar and TabBar are hidden by App.vue
+    while this is mounted; debug provides its own navigation (sticky
+    header with X close + sticky tabs + fixed-bottom DEV indicator).
   -->
-  <div class="w-full">
-    <!-- DEV MODE banner — единственный красный в платформенном UI -->
+  <div class="w-full" style="background: #FFFFFF">
+    <!-- ─── Sticky top: safe-area + header + tab switcher ───────────────
+         padding-top: env(safe-area-inset-top) paints the iPhone notch
+         area with white so it visually merges with the debug header.
+         Stays glued to viewport top during scroll (z-40, below mascot
+         z-50 and plinth z-49, but above content). -->
     <div
-      class="px-4 py-1.5 text-center font-mono text-[10px] uppercase tracking-[0.3em]"
-      style="background: #DC2626; color: #000000"
+      class="sticky z-40"
+      style="
+        top: 0;
+        background: #FFFFFF;
+        padding-top: env(safe-area-inset-top, 0px);
+        border-bottom: 1px solid #C8C8C8;
+      "
     >
-      ⚠ Режим разработки · debug
-    </div>
-
-    <!-- Header -->
-    <div
-      class="flex items-center justify-between px-4 py-3"
-      style="background: #FFFFFF; border-bottom: 1px solid #C8C8C8"
+      <!-- Header — Debug · series name + X close button -->
+      <div
+        class="flex items-center justify-between px-4 py-3"
+        style="border-bottom: 1px solid #C8C8C8"
       >
         <div class="flex items-center gap-2">
           <Bug :size="16" color="#000000" />
@@ -275,7 +280,7 @@ async function hardReload() {
       </div>
 
       <!-- Tab switcher -->
-      <div class="flex flex-wrap" style="border-bottom: 1px solid #C8C8C8">
+      <div class="flex flex-wrap">
         <button
           v-for="t in [
             { id: 'qrs', label: 'QR' },
@@ -297,18 +302,18 @@ async function hardReload() {
           {{ t.label }}
         </button>
       </div>
+    </div>
 
-      <!-- Content area. No internal scroll — window scrolls naturally
-           (we're not a modal anymore). pb is dynamic:
-           • non-mascot tabs: pb-28 (112px) clears the fixed TabBar (~94px
-             with iPhone safe-area).
-           • mascot tab: pb-[200px] additionally clears the mascot, which
-             floats fixed at ~170px from viewport bottom on Mascot tab.
-             Without this, the last content rows would visually overlap
-             the mascot's head. -->
+      <!-- Content area. No internal scroll — window scrolls naturally.
+           pb is dynamic to clear fixed-bottom elements:
+           • Non-mascot tabs: pb-24 (96px) clears the red DEV banner
+             (~70px on iPhone: 36px inner + safe-area-inset-bottom 34px).
+           • Mascot tab: pb-[260px] clears the plinth top (~230px from
+             physical bottom) so last content row doesn't visually collide
+             with mascot/plinth area when scrolled to bottom. -->
       <div
         class="px-4 pt-4"
-        :class="activeSection === 'mascot' ? 'pb-[200px]' : 'pb-28'"
+        :class="activeSection === 'mascot' ? 'pb-[260px]' : 'pb-24'"
       >
 
         <!-- ═══ QRS TAB ═══ -->
@@ -1088,5 +1093,43 @@ async function hardReload() {
           </div>
         </div>
       </div>
+
+    <!-- ─── Fixed white plinth behind mascot (Mascot tab only) ─────────
+         z-49 sits below mascot (z-50) but above all scrollable content.
+         Mascot lives at bottom: env(safe-area-inset-bottom) + 70px and
+         is ~120-160px tall, so SVG vertical span ≈ 70..230 from bottom.
+         Plinth at bottom = red-banner-height (36px inner) + safe-area
+         and height 160px → covers 70..230 area. Mascot sits cleanly on
+         white. -->
+    <div
+      v-if="activeSection === 'mascot'"
+      class="fixed left-0 right-0"
+      style="
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 36px);
+        height: 160px;
+        background: #FFFFFF;
+        z-index: 49;
+        border-top: 1px solid #E0E0E0;
+        border-bottom: 1px solid #E0E0E0;
+      "
+      aria-hidden="true"
+    ></div>
+
+    <!-- ─── Fixed red "DEV MODE" indicator at very bottom ──────────────
+         z-30 (below plinth z-49 and mascot z-50 — they don't overlap,
+         the banner is below them). Inner padding-bottom includes
+         safe-area-inset-bottom so text sits above iPhone home indicator. -->
+    <div
+      class="fixed left-0 right-0 text-center font-mono text-[10px] uppercase tracking-[0.3em]"
+      style="
+        bottom: 0;
+        z-index: 30;
+        background: #DC2626;
+        color: #000000;
+        padding: 6px 16px calc(env(safe-area-inset-bottom, 0px) + 6px);
+      "
+    >
+      ⚠ Режим разработки · debug
+    </div>
   </div>
 </template>

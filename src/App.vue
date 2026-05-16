@@ -80,6 +80,12 @@ const { activeEffects, creditCard, consumeEffects, refundKeysOnPoolFallback } = 
 const { pushToast } = useToast()
 const tama = useTama()
 
+// ── Phase 4: Debug full-screen mode ─────────────────────────────────────
+// When debug is open, the debug page takes over the entire viewport.
+// TopBar, TabBar, sticky active-effects badge all hide; debug has its own
+// navigation (sticky header + X close). Used by template v-if guards.
+const isDebugFullScreen = computed(() => debugPanelOpen.value && debugMode.value)
+
 // ── Phase 4: Mascot zone logic ──────────────────────────────────────────
 // Scanner, active reveal, debug panel = gambling zone → mascot hidden.
 // Exception: when the debug panel is open AND user is on the 'mascot' tab,
@@ -436,11 +442,16 @@ function handleResetPartition() {
   <div class="min-h-screen relative" style="background: #EEEEEE">
     <div class="grain"></div>
 
-    <TopBar :debug-mode="debugMode" @toggle-debug="onToggleDebug" @open-stats="onOpenStats" />
+    <TopBar
+      v-if="!isDebugFullScreen"
+      :debug-mode="debugMode"
+      @toggle-debug="onToggleDebug"
+      @open-stats="onOpenStats"
+    />
 
     <!-- Active effects sticky badge -->
     <div
-      v-if="(activeEffects.luckActive || activeEffects.doubleActive || activeEffects.forcePoolC) && activeTab !== 'scanner'"
+      v-if="!isDebugFullScreen && (activeEffects.luckActive || activeEffects.doubleActive || activeEffects.forcePoolC) && activeTab !== 'scanner'"
       class="sticky z-20"
       :style="{
         top: `calc(env(safe-area-inset-top, 0px) + 60px)`,
@@ -459,7 +470,11 @@ function handleResetPartition() {
 
     <main
       class="max-w-[440px] mx-auto relative z-10"
-      :style="{ paddingTop: `calc(env(safe-area-inset-top, 0px) + 4rem)` }"
+      :style="{
+        paddingTop: isDebugFullScreen
+          ? '0'
+          : `calc(env(safe-area-inset-top, 0px) + 4rem)`,
+      }"
     >
       <!-- Debug mode: full-screen page that replaces the active screen.
            TopBar stays visible; TabBar stays visible (clicking any tab
@@ -467,7 +482,7 @@ function handleResetPartition() {
            content at fixed z-50 when on the Mascot debug tab (see
            mascotZone). -->
       <DebugPanel
-        v-if="debugPanelOpen && debugMode"
+        v-if="isDebugFullScreen"
         :scan-log="scanLog"
         :scanned-qrs="scannedQrs"
         :server-seed="serverSeed"
@@ -508,7 +523,13 @@ function handleResetPartition() {
     />
     <ToastStack />
     <TamaMascot :zone="mascotZone" />
-    <TabBar :active-tab="activeTab" :cart-ping="cartBadgePing" :coll-ping="collBadgePing" @change="onTabChange" />
+    <TabBar
+      v-if="!isDebugFullScreen"
+      :active-tab="activeTab"
+      :cart-ping="cartBadgePing"
+      :coll-ping="collBadgePing"
+      @change="onTabChange"
+    />
 
     <!-- Phase 3: Stats overlay — full-screen ProfileScreen -->
     <div
