@@ -1,12 +1,17 @@
 <script setup>
 import { Dices, Flame, Key, Zap } from 'lucide-vue-next'
 import { useCards } from '../composables/useCards.js'
-import { useToast } from '../composables/useToast.js'
 import { CARD_META, CARD_ACTIVATION_THRESHOLD } from '../engine/constants.js'
-import { evaluateTriggers, fireTriggers } from '../engine/triggers.js'
 
 const { cardsOwned, activeEffects, canActivate, activateCard } = useCards()
-const { pushToast } = useToast()
+
+// Phase β.1 (sub-phase b): emit up to App.vue instead of firing triggers
+// locally. Pre-existing bug fix — old code called fireTriggers() raw (without
+// fireTriggersWithMascot) so mascot never reacted to power_activate.
+// Also: insufficient/already_active cases used pushToast directly, bypassing
+// the trigger pipeline. Now they go through proper power_activate_attempt
+// event for centralised mascot/toast handling and one-shot tracking.
+const emit = defineEmits(['power-activate-result'])
 
 const CARDS = [
   { type: 'luck',   Icon: Dices, effect: 'luckActive',    activeLabel: '×2 шанс Rare' },
@@ -16,26 +21,17 @@ const CARDS = [
 
 function onActivate(cardType) {
   const r = activateCard(cardType)
-  if (r.ok) {
-    fireTriggers(
-      evaluateTriggers('power_activate', { cardType, cardLabel: r.label }),
-      pushToast,
-      null,
-    )
-  } else if (r.reason === 'insufficient') {
-    pushToast({
-      kind: 'error',
-      title: 'Недостаточно карт',
-      detail: `Нужно ${CARD_ACTIVATION_THRESHOLD} одинаковых`,
-      icon: 'X',
-    })
-  } else if (r.reason === 'already_active') {
-    pushToast({
-      kind: 'info',
-      title: 'Сила уже активна',
-      detail: 'Сработает на следующем скане',
-    })
-  }
+  // r shape: { ok, label?, reason? } — see useCards.js activateCard().
+  // Forward to App.vue with full context so the proper event can be emitted
+  // through the unified pipeline (with mascot integration + markFlag tracking).
+  emit('power-activate-result', {
+    ok: r.ok,
+    cardType,
+    cardLabel: r.label || CARD_META[cardType]?.label,
+    reason: r.reason,
+    cardsHave: cardsOwned.value?.[cardType] ?? 0,
+    cardsNeed: CARD_ACTIVATION_THRESHOLD,
+  })
 }
 </script>
 

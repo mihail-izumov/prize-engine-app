@@ -65,12 +65,9 @@ const isSleeping = computed(() =>
   tama.isHidden.value || tama.currentState.value === 'sleepy'
 )
 
-// Tap on idle mascot → random quip
-function onMascotTap() {
-  if (tama.currentState.value === 'idle') {
-    tama.trigger('idle')
-  }
-}
+// Tap on mascot — routed through useTama.onMascotTap() for curiosity counter
+// (SCENARIOS §5.1) + wakeUp on sleepy. Phase β.1 (sub-phase c).
+// Local wrapper removed; @click below calls tama.onMascotTap() directly.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // EAR VARIANTS — per-emotion ear posture (1:1 from mascot-phase1.jsx)
@@ -204,7 +201,7 @@ const lookUpClass = computed(() => tama.onboardingLookUp.value ? 'mascot-look-up
         :style="{ width: mascotSize + 'px', height: mascotSize + 'px', padding: 0, background: 'none', border: 0 }"
         aria-label="Разбудить Таму"
         title="Разбудить Таму"
-        @click="tama.wakeUp()"
+        @click="tama.onMascotTap()"
       >
         <svg
           viewBox="0 0 100 100"
@@ -336,7 +333,7 @@ const lookUpClass = computed(() => tama.onboardingLookUp.value ? 'mascot-look-up
           class="pointer-events-auto"
           :class="[stateClass, lookUpClass]"
           :style="{ width: mascotSize + 'px', height: mascotSize + 'px' }"
-          @click="onMascotTap"
+          @click="tama.onMascotTap()"
         >
           <div class="wrap absolute inset-0 flex items-center justify-center">
             <svg

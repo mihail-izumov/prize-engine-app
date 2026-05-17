@@ -18,12 +18,14 @@
 //                      on 'mascot' tab the mascot is rendered live for
 //                      visual verification, on other tabs it stays hidden)
 // ═══════════════════════════════════════════════════════════════════════════
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, reactive, onMounted, onUnmounted } from 'vue'
 import { Bug, X, Trash2, RefreshCw, RotateCw, Eraser, Info } from 'lucide-vue-next'
 import { usePartition } from '../composables/usePartition.js'
 import { useSeries } from '../composables/useSeries.js'
 import { useCards } from '../composables/useCards.js'
-import { useTama, STATES as TAMA_STATES, TAMA_PHRASES, TAMA_ONBOARDING } from '../composables/useTama.js'
+import { useTama, STATES as TAMA_STATES, TAMA_PHRASES, TAMA_ONBOARDING, randomFact } from '../composables/useTama.js'
+import { useFirstTimeFlags, KNOWN_FLAGS } from '../composables/useFirstTimeFlags.js'
+import { useAgenda, KNOWN_AGENDA_IDS } from '../composables/useAgenda.js'
 import {
   TIER_ORDER, TIER_META, CARD_META,
   SLOT_CATALOG, enginePoolToUiCollection,
@@ -33,6 +35,10 @@ import {
   fmtCharges, slotInfoById,
 } from '../engine/state-helpers.js'
 import { TRIGGER_CONFIG } from '../engine/triggers.js'
+import {
+  SCENARIOS_REGISTRY, CATEGORY_LABELS, CATEGORY_ORDER,
+  KNOWN_VARS, groupByCategory, extractPhraseVars,
+} from '../engine/scenarios-registry.js'
 
 const props = defineProps({
   scanLog: { type: Array, default: () => [] },
@@ -221,6 +227,258 @@ function previewTrigger(trigger) {
     message: trigger.mascotPhrase || undefined,
   })
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Phase β.1 sub-phase f — NEW: scenario accordion + filters + info pane
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Wire the composables required by the new sub-phase f UI. flags/agenda are
+// singletons so calling here doesn't double-init; we just take handles.
+const flagsApi = useFirstTimeFlags()
+const agendaApi = useAgenda()
+
+// ── Filter state ─────────────────────────────────────────────────────────
+//   priorityFilter — Set of active P-pills. Empty Set means "show all".
+//   showUnimpl     — boolean toggle for ✱ Unimplemented filter
+//   searchQuery    — case-insensitive substring match on trigger_id +
+//                    text_preview + code
+const priorityFilter = ref(new Set())
+const showUnimpl = ref(false)
+const searchQuery = ref('')
+
+function togglePriority(p) {
+  const s = new Set(priorityFilter.value)
+  if (s.has(p)) s.delete(p); else s.add(p)
+  priorityFilter.value = s
+}
+function clearFilters() {
+  priorityFilter.value = new Set()
+  showUnimpl.value = false
+  searchQuery.value = ''
+}
+
+// ── Implementation status check ──────────────────────────────────────────
+//   Source of truth: TRIGGER_CONFIG ids + KNOWN_AGENDA_IDS + special-cases
+//   (onboarding lives in TAMA_ONBOARDING; curiosity_* are in-engine in
+//   useTama). Anything else => unimplemented (✱).
+const TRIGGER_CONFIG_IDS = new Set(TRIGGER_CONFIG.map(t => t.id))
+const SPECIAL_IMPLEMENTED = new Set([
+  'onboarding',
+  'curiosity_tap_1', 'curiosity_tap_few', 'curiosity_tap_many',
+  'curiosity_tap_pestering', 'curiosity_tap_warning',
+  'curiosity_easter_egg',
+])
+function isImplemented(entry) {
+  if (TRIGGER_CONFIG_IDS.has(entry.trigger_id)) return true
+  if (KNOWN_AGENDA_IDS.includes(entry.trigger_id)) return true
+  if (SPECIAL_IMPLEMENTED.has(entry.trigger_id)) return true
+  return false
+}
+
+// ── Filtered + grouped scenarios for accordion ───────────────────────────
+const filteredEntries = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  const pSet = priorityFilter.value
+  return SCENARIOS_REGISTRY.filter(e => {
+    if (pSet.size > 0 && !pSet.has(e.priority)) return false
+    if (showUnimpl.value && isImplemented(e)) return false
+    if (q) {
+      const hay = (e.trigger_id + ' ' + (e.text_preview || '') + ' ' + e.code).toLowerCase()
+      if (!hay.includes(q)) return false
+    }
+    return true
+  })
+})
+const filteredGroups = computed(() => groupByCategory(filteredEntries.value))
+const filteredTotal = computed(() => filteredEntries.value.length)
+
+// ── Vars-edit state ──────────────────────────────────────────────────────
+//   Per-entry editable vars map. Keyed by entry.code to disambiguate among
+//   ~66 entries. Defaults pre-populated so phrases preview cleanly without
+//   user editing first.
+const DEFAULT_VAR_VALUES = Object.freeze({
+  amount: '300', balance: '1200', next_tier_gap: '600',
+  tier_name: 'Epic', power_name: 'Везения',
+  cards_have: '2', cards_need: '3',
+  ip_name: 'ST', days_away: '30', gift_name: 'приз',
+  slots_left: '8',
+})
+const varsState = reactive({}) // { [entry.code]: { var: value, ... } }
+function ensureVarsState(entry) {
+  if (varsState[entry.code]) return varsState[entry.code]
+  const vars = extractPhraseVars(entry.text_preview)
+  const bag = {}
+  for (const v of vars) bag[v] = DEFAULT_VAR_VALUES[v] ?? ''
+  varsState[entry.code] = bag
+  return bag
+}
+function varsForEntry(entry) {
+  return extractPhraseVars(entry.text_preview)
+}
+
+// Numeric coercion: most known vars are numeric. tier_name/power_name/ip_name/
+// gift_name stay as strings.
+const STRING_VARS = new Set(['tier_name', 'power_name', 'ip_name', 'gift_name'])
+function coerceVar(name, value) {
+  if (STRING_VARS.has(name)) return value
+  const n = Number(value)
+  return Number.isFinite(n) ? n : value
+}
+
+// ── Simulate entry ───────────────────────────────────────────────────────
+//   Routes by entry.kind:
+//     onboarding         → tama.replayOnboarding()
+//     curiosity (J6)     → tama.trigger('smug-wink', { message: randomFact() })
+//     curiosity (J1-J5)  → tama.trigger(state, { phraseKey, vars })
+//     reactive / agenda  → tama.trigger(state, { phraseKey: trigger_id, vars })
+//   Silent entries (state === 'silent') — disabled, no-op.
+function simulateEntry(entry) {
+  if (entry.state === 'silent') return
+  ensureVisible()
+  if (entry.kind === 'onboarding') {
+    tama.replayOnboarding()
+    return
+  }
+  if (entry.trigger_id === 'curiosity_easter_egg') {
+    tama.trigger('smug-wink', { message: randomFact() })
+    return
+  }
+  // Build vars from edit state (coerced)
+  const editBag = ensureVarsState(entry)
+  const vars = {}
+  for (const k of Object.keys(editBag)) {
+    vars[k] = coerceVar(k, editBag[k])
+  }
+  tama.trigger(entry.state, {
+    phraseKey: entry.trigger_id,
+    vars,
+  })
+}
+
+// ── First-time flags toggle list ─────────────────────────────────────────
+//   Read live from getAllFlags(). On checkbox toggle: resetFlag if unchecking,
+//   markFlagSeen if checking. UI reflects the underlying singleton state.
+//   nowTick used as dep so the list re-evaluates after toggles (since
+//   getAllFlags returns an object, Vue's reactivity may not pick up internal
+//   changes unless we tick).
+const nowTick = ref(0)
+const flagsListLive = computed(() => {
+  // Read nowTick to register dep
+  void nowTick.value
+  const allFlags = flagsApi.getAllFlags() // { name: bool }
+  // Show every KNOWN_FLAG + any flag actually set with a dynamic prefix
+  const knownSet = new Set(KNOWN_FLAGS)
+  const result = []
+  // Known flags first, alphabetized
+  const sortedKnown = [...KNOWN_FLAGS].sort()
+  for (const name of sortedKnown) {
+    result.push({ name, seen: !!allFlags[name] })
+  }
+  // Dynamic flags (e.g. new_series:ST) — flags returned from getAllFlags that
+  // aren't in KNOWN_FLAGS
+  for (const name of Object.keys(allFlags)) {
+    if (!knownSet.has(name) && allFlags[name]) {
+      result.push({ name, seen: true, dynamic: true })
+    }
+  }
+  return result
+})
+
+function toggleFlag(flag) {
+  if (flag.seen) {
+    flagsApi.resetFlag(flag.name)
+  } else {
+    flagsApi.markFlagSeen(flag.name)
+  }
+  nowTick.value++
+}
+function resetAllFlagsClick() {
+  flagsApi.resetAllFlags()
+  nowTick.value++
+}
+
+// ── Agenda queue inspection ──────────────────────────────────────────────
+//   pendingAgendas — live from useAgenda (ref).
+//   deliveredAgendaFlags — list of { trigger_id, deliveredAt, cooldown_h,
+//     remainingMs }. Cooldown_h is derived per-trigger by looking up the
+//     known item shape. Defaults to 24h (the value used by all our agenda
+//     enqueue calls in (d) and (e)).
+const DEFAULT_AGENDA_COOLDOWN_H = 24
+
+function fmtCooldown(remainingMs) {
+  if (!Number.isFinite(remainingMs)) return '∞'
+  if (remainingMs <= 0) return 'готов'
+  const h = Math.floor(remainingMs / 3600_000)
+  const m = Math.floor((remainingMs % 3600_000) / 60_000)
+  const s = Math.floor((remainingMs % 60_000) / 1000)
+  if (h > 0) return h + 'ч ' + m + 'м'
+  if (m > 0) return m + 'м ' + s + 'с'
+  return s + 'с'
+}
+function fmtTimestamp(ts) {
+  const d = new Date(ts)
+  const pad = (n) => String(n).padStart(2, '0')
+  return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds())
+}
+
+const deliveredAgendaFlagsLive = computed(() => {
+  void nowTick.value // dep
+  const raw = agendaApi.getDeliveredFlags()
+  return raw.map(item => {
+    const remaining = agendaApi.getCooldownRemaining(item.trigger_id, DEFAULT_AGENDA_COOLDOWN_H)
+    return {
+      ...item,
+      cooldown_h: DEFAULT_AGENDA_COOLDOWN_H,
+      remainingMs: remaining,
+      remainingLabel: fmtCooldown(remaining),
+      timestampLabel: fmtTimestamp(item.deliveredAt),
+    }
+  })
+})
+
+function resetAgendaCooldownsClick() {
+  agendaApi.resetCooldowns()
+  nowTick.value++
+}
+function resetSingleAgendaCooldown(triggerId) {
+  agendaApi.resetSingleCooldown(triggerId)
+  nowTick.value++
+}
+
+// ── Curiosity counter reset ──────────────────────────────────────────────
+function resetCuriosity() {
+  tama.curiosityTaps.value = 0
+}
+
+// ── Sleep / Wake direct buttons (Quick actions row 1) ────────────────────
+function sleepNow() {
+  tama.goToSleep()
+}
+function wakeNow() {
+  ensureVisible()
+  tama.wakeUp()
+}
+
+// ── Live tick for cooldown countdown ─────────────────────────────────────
+//   Updates every 1s while DebugPanel mounted. The tick increments nowTick
+//   which acts as a reactive dep for cooldown-remaining computeds.
+//   Cleanup on unmount avoids leaks if the panel is destroyed while open.
+let tickInterval = null
+onMounted(() => {
+  tickInterval = setInterval(() => { nowTick.value++ }, 1000)
+})
+onUnmounted(() => {
+  if (tickInterval) { clearInterval(tickInterval); tickInterval = null }
+})
+
+// Priority pill colors — visual hierarchy from P0 (critical, black) to P3 (deferred, grey).
+const PRIORITY_STYLES = Object.freeze({
+  P0: { bg: '#000000', fg: '#FFFFFF' },
+  P1: { bg: '#4A4A4A', fg: '#FFFFFF' },
+  P2: { bg: '#8A8A8A', fg: '#FFFFFF' },
+  P3: { bg: '#C8C8C8', fg: '#000000' },
+})
+function priorityStyle(p) { return PRIORITY_STYLES[p] || PRIORITY_STYLES.P3 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SYSTEM TAB — iOS PWA helpers (standalone mode has no browser reload UI)
@@ -650,111 +908,295 @@ async function hardReload() {
           </template>
         </div>
 
-        <!-- ═══ MASCOT TAB ═══ -->
-        <!-- Ported from mascot-phase1.jsx DemoPage (lines 1981-2299):
-             GameScenario + ManualTriggers + InfoPanel.
-             ConsumerHookProof skipped — React-Context-specific test,
-             trivially passes for Vue's module-singleton composable. -->
-        <div v-if="activeSection === 'mascot'" class="space-y-5">
+        <!-- ═══ MASCOT TAB — Phase β.1 sub-phase f redesign ═══ -->
+        <!--
+          Structure (top → bottom):
+            1. Quick actions sticky top (Reset state / Replay onb / Wake /
+               Sleep / Reset curiosity / Reset flags / Reset agenda)
+            2. Filter bar (P0-P3 pills, ✱ Unimplemented, search input)
+            3. Accordion: 11 categories A-K (collapsible <details>)
+            4. Info pane (Mascot state, Curiosity, Agenda queue, Flags)
+            5. Reference (Phrase bank, 12-state buttons, Game scenarios) —
+               collapsed by default since accordion makes them redundant.
 
-          <!-- ─── Strategy note (mini-spec §10.3 requires this) ─── -->
+          Source of truth for scenarios: src/engine/scenarios-registry.js
+          (derived from TAMA-SCENARIOS.md v0.2 §4 + §10).
+        -->
+        <div v-if="activeSection === 'mascot'" class="space-y-3">
+
+          <!-- ─── 1. Quick actions (sticky) ─── -->
           <div
-            class="p-3"
-            style="background: #FFFFFF; border-left: 2px solid #000000"
+            class="sticky top-0 -mx-3 px-3 py-2 space-y-2 z-10"
+            style="background: #FAFAFA; border-bottom: 1px solid #C8C8C8"
           >
-            <div class="text-[11px] leading-relaxed" style="color: #4A4A4A">
-              <strong style="color: #000000">Обрати внимание:</strong> на крупном Legendary маскот
-              не делает отдельную супер-реакцию (как на Mythic). Он подсвечивает
-              прогресс зарядов, чтобы стимулировать <em>продолжать копить</em>,
-              а не сразу обменивать. Это намеренный паттерн — STRATEGY §6.7 (breakage).
+            <!-- Row 1: state actions -->
+            <div class="grid grid-cols-4 gap-1.5">
+              <button
+                type="button"
+                class="px-2 py-1.5 text-[11px] font-medium"
+                style="background: #FFFFFF; border: 2px solid #000000; border-radius: 4px; color: #000000"
+                @click="onMascotReset"
+              >
+                Reset state
+              </button>
+              <button
+                type="button"
+                class="px-2 py-1.5 text-[11px] font-medium"
+                style="background: #FFFFFF; border: 2px solid #000000; border-radius: 4px; color: #000000"
+                @click="onReplayOnboarding"
+              >
+                Replay onb.
+              </button>
+              <button
+                type="button"
+                class="px-2 py-1.5 text-[11px] font-medium"
+                style="background: #FFFFFF; border: 2px solid #000000; border-radius: 4px; color: #000000"
+                @click="wakeNow"
+              >
+                Wake
+              </button>
+              <button
+                type="button"
+                class="px-2 py-1.5 text-[11px] font-medium"
+                style="background: #FFFFFF; border: 2px solid #000000; border-radius: 4px; color: #000000"
+                @click="sleepNow"
+              >
+                Sleep
+              </button>
+            </div>
+            <!-- Row 2: persistence resets -->
+            <div class="grid grid-cols-3 gap-1.5">
+              <button
+                type="button"
+                class="px-2 py-1.5 text-[11px] font-medium"
+                style="background: #FFFFFF; border: 2px solid #000000; border-radius: 4px; color: #000000"
+                @click="resetCuriosity"
+              >
+                Reset curiosity
+              </button>
+              <button
+                type="button"
+                class="px-2 py-1.5 text-[11px] font-medium"
+                style="background: #FFFFFF; border: 2px solid #000000; border-radius: 4px; color: #000000"
+                @click="resetAllFlagsClick"
+              >
+                Reset all flags
+              </button>
+              <button
+                type="button"
+                class="px-2 py-1.5 text-[11px] font-medium"
+                style="background: #FFFFFF; border: 2px solid #000000; border-radius: 4px; color: #000000"
+                @click="resetAgendaCooldownsClick"
+              >
+                Reset agenda
+              </button>
+            </div>
+
+            <!-- Row 3: filter pills + search -->
+            <div class="flex items-center gap-1 flex-wrap">
+              <button
+                v-for="p in ['P0','P1','P2','P3']"
+                :key="p"
+                type="button"
+                class="px-2 py-1 text-[10px] font-mono"
+                :style="{
+                  background: priorityFilter.has(p) ? priorityStyle(p).bg : '#FFFFFF',
+                  color: priorityFilter.has(p) ? priorityStyle(p).fg : '#000000',
+                  border: '1px solid #000000',
+                  borderRadius: '3px',
+                }"
+                @click="togglePriority(p)"
+              >
+                {{ p }}
+              </button>
+              <button
+                type="button"
+                class="px-2 py-1 text-[10px] font-mono"
+                :style="{
+                  background: showUnimpl ? '#000000' : '#FFFFFF',
+                  color: showUnimpl ? '#FFFFFF' : '#000000',
+                  border: '1px solid #000000',
+                  borderRadius: '3px',
+                }"
+                @click="showUnimpl = !showUnimpl"
+              >
+                ✱ Unimpl
+              </button>
+              <input
+                v-model="searchQuery"
+                type="text"
+                placeholder="search..."
+                class="flex-1 min-w-[80px] px-2 py-1 text-[11px] font-mono"
+                style="background: #FFFFFF; border: 1px solid #000000; border-radius: 3px; color: #000000"
+              />
+              <button
+                v-if="priorityFilter.size || showUnimpl || searchQuery"
+                type="button"
+                class="px-2 py-1 text-[10px]"
+                style="background: #EEEEEE; border: 1px solid #C8C8C8; border-radius: 3px; color: #4A4A4A"
+                @click="clearFilters"
+              >
+                ✕
+              </button>
+            </div>
+            <div class="text-[10px] font-mono" style="color: #4A4A4A">
+              Найдено: {{ filteredTotal }} / {{ SCENARIOS_REGISTRY.length }}
             </div>
           </div>
 
-          <!-- ─── Игровой сценарий — 3 кнопки ─── -->
-          <section class="space-y-2">
-            <div class="font-mono text-[10px] uppercase tracking-[0.2em]" style="color: #4A4A4A">
-              Игровой сценарий
-            </div>
-            <div class="grid grid-cols-1 gap-2">
-              <button
-                type="button"
-                class="text-left p-3 transition-colors"
-                style="background: #FFFFFF; border: 2px solid #000000; border-radius: 4px"
-                @click="runCommonScenario"
-              >
-                <div class="font-semibold text-sm" style="color: #000000">
-                  Симулировать Common
-                </div>
-                <div class="text-[11px] mt-0.5" style="color: #8A8A8A">
-                  → charge-up, +300 зарядов
-                </div>
-              </button>
-              <button
-                type="button"
-                class="text-left p-3 transition-colors"
-                style="background: #FFFFFF; border: 2px solid #000000; border-radius: 4px"
-                @click="runLegendaryScenario"
-              >
-                <div class="font-semibold text-sm" style="color: #000000">
-                  Симулировать Legendary
-                </div>
-                <div class="text-[11px] mt-0.5" style="color: #8A8A8A">
-                  → charge-up (намеренно, не wow)
-                </div>
-              </button>
-              <button
-                type="button"
-                class="text-left p-3 transition-colors"
-                style="background: #FFFFFF; border: 2px solid #000000; border-radius: 4px"
-                @click="runMythicScenario"
-              >
-                <div class="font-semibold text-sm" style="color: #000000">
-                  Симулировать Mythic
-                </div>
-                <div class="text-[11px] mt-0.5" style="color: #8A8A8A">
-                  → wow
-                </div>
-              </button>
-            </div>
-          </section>
-
-          <!-- ─── Ручные триггеры — 12 состояний ─── -->
-          <section class="space-y-2">
-            <div class="font-mono text-[10px] uppercase tracking-[0.2em]" style="color: #4A4A4A">
-              Ручные триггеры
-            </div>
-            <div class="text-[11px] leading-relaxed mb-2" style="color: #8A8A8A">
-              Клик → автоматическая случайная фраза из <code style="background: #EEEEEE; padding: 1px 4px; border-radius: 2px; color: #000000">TAMA_PHRASES</code>.
-              Темп-состояния возвращаются в idle через defaultDuration.
-            </div>
-            <div class="grid grid-cols-2 gap-2">
-              <button
-                v-for="b in MASCOT_STATE_BUTTONS"
-                :key="b.id"
-                type="button"
-                class="px-3 py-2.5 text-sm font-medium transition-colors"
-                :style="{
-                  background: tama.currentState.value === b.id ? '#000000' : '#FFFFFF',
-                  color: tama.currentState.value === b.id ? '#FFFFFF' : '#000000',
-                  border: '2px solid #000000',
-                  borderRadius: '4px',
-                }"
-                @click="runMascotState(b.id)"
-              >
-                {{ b.label }}
-              </button>
-            </div>
-          </section>
-
-          <!-- ─── Info panel — current state, bubble, hidden, history ─── -->
-          <section class="space-y-2">
-            <div class="font-mono text-[10px] uppercase tracking-[0.2em]" style="color: #4A4A4A">
-              Отладка
-            </div>
-            <div
-              class="p-3 space-y-2.5"
-              style="background: #FFFFFF; border: 2px solid #000000; border-radius: 4px"
+          <!-- ─── 2. Accordion: 11 categories A-K ─── -->
+          <details
+            v-for="group in filteredGroups"
+            :key="group.key"
+            class="overflow-hidden"
+            style="background: #FFFFFF; border: 1px solid #C8C8C8; border-radius: 4px"
+            open
+          >
+            <summary
+              class="px-3 py-2 cursor-pointer text-xs font-semibold"
+              style="background: #EEEEEE; color: #000000; user-select: none"
             >
+              {{ group.label }}
+              <span class="font-normal" style="color: #4A4A4A">
+                · {{ group.entries.length }}
+              </span>
+            </summary>
+            <!-- Rows inside category -->
+            <div
+              v-for="entry in group.entries"
+              :key="entry.code + ':' + entry.trigger_id"
+              class="px-3 py-2 space-y-1"
+              style="border-top: 1px solid #EEEEEE"
+            >
+              <!-- Header: code · priority · trigger_id · impl-marker -->
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-mono text-[10px]" style="color: #8A8A8A">
+                  {{ entry.code }}
+                </span>
+                <span
+                  class="px-1.5 py-0.5 text-[9px] font-mono"
+                  :style="{
+                    background: priorityStyle(entry.priority).bg,
+                    color: priorityStyle(entry.priority).fg,
+                    borderRadius: '2px',
+                  }"
+                >
+                  {{ entry.priority }}
+                </span>
+                <code class="text-[11px] font-mono" style="color: #000000">
+                  {{ entry.trigger_id }}
+                </code>
+                <span
+                  v-if="!isImplemented(entry)"
+                  class="text-[10px]"
+                  style="color: #8A8A8A"
+                  title="Не реализовано"
+                >
+                  ✱
+                </span>
+              </div>
+              <!-- Meta: emotion · kratnost · kind -->
+              <div class="text-[10px] font-mono" style="color: #4A4A4A">
+                <span>Эмоция: </span>
+                <code style="color: #000000">{{ entry.state }}</code>
+                <span> · {{ entry.kratnost }} · {{ entry.kind }}</span>
+              </div>
+              <!-- Text preview -->
+              <div
+                v-if="entry.text_preview"
+                class="text-[11px] leading-snug italic"
+                style="color: #000000"
+              >
+                "{{ entry.text_preview }}"
+              </div>
+              <!-- Condition description -->
+              <div class="text-[10px] leading-snug" style="color: #8A8A8A">
+                {{ entry.condition_description }}
+              </div>
+
+              <!-- Vars edit (only if phrase has interpolation vars) -->
+              <details
+                v-if="varsForEntry(entry).length > 0"
+                class="text-[10px]"
+              >
+                <summary
+                  class="cursor-pointer font-mono py-0.5"
+                  style="color: #4A4A4A"
+                  @click="ensureVarsState(entry)"
+                >
+                  Vars ▼ ({{ varsForEntry(entry).join(', ') }})
+                </summary>
+                <div class="mt-1 space-y-1 pl-3" style="border-left: 1px solid #EEEEEE">
+                  <div
+                    v-for="v in varsForEntry(entry)"
+                    :key="v"
+                    class="flex items-center gap-2"
+                  >
+                    <label class="w-24 shrink-0 font-mono text-[10px]" style="color: #4A4A4A">
+                      {{ v }}
+                    </label>
+                    <input
+                      :value="ensureVarsState(entry)[v]"
+                      @input="ensureVarsState(entry)[v] = $event.target.value"
+                      type="text"
+                      class="flex-1 px-1.5 py-0.5 text-[10px] font-mono"
+                      style="background: #FFFFFF; border: 1px solid #C8C8C8; border-radius: 2px; color: #000000"
+                    />
+                  </div>
+                </div>
+              </details>
+
+              <!-- Action buttons -->
+              <div class="flex gap-1.5 pt-1">
+                <button
+                  type="button"
+                  class="px-2.5 py-1 text-[11px] font-medium"
+                  :disabled="entry.state === 'silent'"
+                  :style="{
+                    background: entry.state === 'silent' ? '#EEEEEE' : '#000000',
+                    color: entry.state === 'silent' ? '#8A8A8A' : '#FFFFFF',
+                    border: '1px solid #000000',
+                    borderRadius: '3px',
+                    cursor: entry.state === 'silent' ? 'not-allowed' : 'pointer',
+                    opacity: entry.state === 'silent' ? 0.55 : 1,
+                  }"
+                  @click="simulateEntry(entry)"
+                >
+                  Симулировать
+                </button>
+                <span
+                  v-if="entry.state === 'silent'"
+                  class="text-[10px] italic self-center"
+                  style="color: #8A8A8A"
+                >
+                  silent — без bubble
+                </span>
+              </div>
+            </div>
+          </details>
+
+          <!-- No-results message -->
+          <div
+            v-if="filteredGroups.length === 0"
+            class="p-3 text-center text-[11px] italic"
+            style="background: #FFFFFF; border: 1px dashed #C8C8C8; border-radius: 4px; color: #8A8A8A"
+          >
+            Ничего не найдено. Сбрось фильтры.
+          </div>
+
+          <!-- ─── 3. Info pane ─── -->
+          <details
+            class="overflow-hidden"
+            style="background: #FFFFFF; border: 1px solid #C8C8C8; border-radius: 4px"
+            open
+          >
+            <summary
+              class="px-3 py-2 cursor-pointer text-xs font-semibold"
+              style="background: #EEEEEE; color: #000000; user-select: none"
+            >
+              Состояние маскота
+            </summary>
+            <div class="p-3 space-y-2.5">
               <!-- Current state -->
               <div class="flex items-start gap-3 text-sm">
                 <div class="w-24 shrink-0 text-[10px] uppercase tracking-wider pt-0.5" style="color: #8A8A8A">
@@ -764,258 +1206,343 @@ async function hardReload() {
                   <code class="px-1.5 py-0.5 rounded text-xs" style="background: #000000; color: #FFFFFF">
                     {{ tama.currentState.value }}
                   </code>
-                  <span
-                    v-if="currentStateMeta"
-                    class="text-xs ml-2"
-                    style="color: #8A8A8A"
-                  >
-                    ({{ currentStateMeta.label }})
+                  <span v-if="currentStateMeta" class="ml-2 text-[10px]" style="color: #8A8A8A">
+                    {{ currentStateMeta.label }}
                   </span>
                 </div>
               </div>
-
               <!-- Bubble -->
               <div class="flex items-start gap-3 text-sm">
                 <div class="w-24 shrink-0 text-[10px] uppercase tracking-wider pt-0.5" style="color: #8A8A8A">
                   Bubble
                 </div>
-                <div class="flex-1">
-                  <span
-                    v-if="tama.bubble.value"
-                    class="text-xs"
-                    style="color: #000000"
-                  >
+                <div class="flex-1 text-xs" style="color: #000000">
+                  <span v-if="tama.bubble.value">
                     "{{ tama.bubble.value.message }}"
                     <span v-if="tama.bubble.value.subtitle" style="color: #8A8A8A">
                       / {{ tama.bubble.value.subtitle }}
                     </span>
-                    <span
-                      v-if="!tama.bubbleVisible.value"
-                      class="ml-1 text-[9px] uppercase"
-                      style="color: #C8C8C8"
-                    >
-                      (hidden)
-                    </span>
                   </span>
-                  <span v-else class="text-xs" style="color: #C8C8C8">—</span>
+                  <span v-else class="italic" style="color: #C8C8C8">—</span>
+                  <span
+                    v-if="tama.bubbleVisible.value"
+                    class="ml-2 px-1.5 py-0.5 text-[9px]"
+                    style="background: #000000; color: #FFFFFF; border-radius: 2px"
+                  >
+                    visible
+                  </span>
                 </div>
               </div>
-
-              <!-- Hidden flag -->
+              <!-- Hidden -->
               <div class="flex items-start gap-3 text-sm">
                 <div class="w-24 shrink-0 text-[10px] uppercase tracking-wider pt-0.5" style="color: #8A8A8A">
                   Hidden
                 </div>
-                <div class="flex-1">
-                  <span class="text-xs" style="color: #000000">
-                    {{ tama.isHidden.value ? 'yes' : 'no' }}
-                  </span>
+                <div class="flex-1 text-xs">
+                  <code class="px-1.5 py-0.5 rounded" style="background: #EEEEEE; color: #000000">
+                    {{ tama.isHidden.value }}
+                  </code>
                 </div>
               </div>
-
-              <!-- Onboarding look-up flag (diagnostic) -->
-              <div class="flex items-start gap-3 text-sm">
-                <div class="w-24 shrink-0 text-[10px] uppercase tracking-wider pt-0.5" style="color: #8A8A8A">
-                  LookUp
-                </div>
-                <div class="flex-1">
-                  <span class="text-xs" style="color: #000000">
-                    {{ tama.onboardingLookUp.value ? 'yes (phrase 4)' : 'no' }}
-                  </span>
-                </div>
-              </div>
-
-              <!-- History -->
+              <!-- History last 5 -->
               <div class="flex items-start gap-3 text-sm">
                 <div class="w-24 shrink-0 text-[10px] uppercase tracking-wider pt-0.5" style="color: #8A8A8A">
                   History
                 </div>
-                <div class="flex-1">
-                  <span
+                <div class="flex-1 space-y-0.5">
+                  <div
                     v-if="mascotHistory.length === 0"
-                    class="text-xs"
+                    class="text-[11px] italic"
                     style="color: #C8C8C8"
                   >
-                    пусто
-                  </span>
-                  <ul v-else class="text-xs space-y-0.5 font-mono">
+                    — пусто —
+                  </div>
+                  <ul v-else class="text-[11px] font-mono space-y-0.5">
                     <li
-                      v-for="(h, i) in mascotHistory"
-                      :key="`${h.ts}-${i}`"
+                      v-for="(h, i) in mascotHistory.slice(0, 5)"
+                      :key="i"
                       class="flex items-center gap-1.5"
+                      style="color: #000000"
                     >
+                      <span style="color: #C8C8C8">{{ i + 1 }}.</span>
                       <span style="color: #8A8A8A">{{ h.from }}</span>
                       <span style="color: #C8C8C8">→</span>
                       <span class="font-semibold" style="color: #000000">{{ h.to }}</span>
                       <span
                         v-if="h.hadBubble"
-                        class="text-[9px] uppercase ml-1"
+                        class="text-[9px] uppercase ml-0.5"
                         style="color: #C8C8C8"
                       >
-                        +bubble
+                        ●
                       </span>
                     </li>
                   </ul>
                 </div>
               </div>
+            </div>
+          </details>
 
-              <!-- Actions -->
-              <div
-                class="flex flex-wrap gap-2 pt-2"
-                style="border-top: 1px solid #EEEEEE"
-              >
-                <button
-                  type="button"
-                  class="flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors"
-                  style="background: #FFFFFF; color: #000000; border: 1px solid #000000; border-radius: 4px"
-                  @click="onMascotReset"
-                >
-                  <RotateCw :size="12" />
-                  Reset to idle
-                </button>
-                <button
-                  type="button"
-                  class="flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors"
-                  style="background: #FFFFFF; color: #000000; border: 1px solid #000000; border-radius: 4px"
-                  @click="onReplayOnboarding"
-                >
-                  <RefreshCw :size="12" />
-                  Replay onboarding
-                </button>
-                <button
-                  v-if="tama.isHidden.value"
-                  type="button"
-                  class="flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors"
-                  style="background: #FFFFFF; color: #000000; border: 1px solid #000000; border-radius: 4px"
-                  @click="tama.wakeUp()"
-                >
-                  Wake up
-                </button>
-              </div>
-            </div>
-          </section>
-
-          <!-- ─── Phrase Bank ─── -->
-          <!-- All phrases Tama can say, grouped by state. Reference only,
-               clicking a state header fires that state for visual preview. -->
-          <section class="space-y-2">
-            <div class="font-mono text-[10px] uppercase tracking-[0.2em]" style="color: #4A4A4A">
-              Банк фраз
-            </div>
-            <div class="text-[11px] leading-relaxed mb-2" style="color: #8A8A8A">
-              Все реплики из <code style="background: #EEEEEE; padding: 1px 4px; border-radius: 2px; color: #000000">TAMA_PHRASES</code>.
-              При триггере выбирается случайная.
-            </div>
-            <div
-              v-for="group in phraseBank"
-              :key="group.id"
-              class="p-3"
-              style="background: #FFFFFF; border: 1px solid #C8C8C8; border-radius: 4px"
+          <!-- ─── 4. Curiosity counter live ─── -->
+          <details
+            class="overflow-hidden"
+            style="background: #FFFFFF; border: 1px solid #C8C8C8; border-radius: 4px"
+          >
+            <summary
+              class="px-3 py-2 cursor-pointer text-xs font-semibold"
+              style="background: #EEEEEE; color: #000000; user-select: none"
             >
-              <div class="flex items-center justify-between mb-1.5">
-                <code class="px-1.5 py-0.5 rounded text-xs" style="background: #000000; color: #FFFFFF">
-                  {{ group.id }}
+              Curiosity counter · {{ tama.curiosityTaps.value }}
+            </summary>
+            <div class="p-3 space-y-2">
+              <div class="text-[11px] leading-snug" style="color: #4A4A4A">
+                Счётчик тапов по маскоту в idle. После 10+ начинают идти факты из
+                <code style="background: #EEEEEE; padding: 1px 3px; border-radius: 2px; color: #000000">CURIOSITY_FACTS</code>.
+                Сбрасывается на refresh приложения (в localStorage не пишется).
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] uppercase tracking-wider" style="color: #8A8A8A">
+                  Текущее:
+                </span>
+                <code class="px-2 py-0.5 text-sm" style="background: #000000; color: #FFFFFF; border-radius: 3px">
+                  {{ tama.curiosityTaps.value }}
                 </code>
-                <span class="text-[10px]" style="color: #8A8A8A">
-                  {{ group.label }} · {{ group.phrases.length }}
-                </span>
-              </div>
-              <ul v-if="group.phrases.length" class="space-y-0.5 text-xs">
-                <li
-                  v-for="(p, i) in group.phrases"
-                  :key="i"
-                  class="flex items-start gap-2"
-                  style="color: #000000"
+                <button
+                  type="button"
+                  class="ml-auto px-2 py-1 text-[10px] font-medium"
+                  style="background: #FFFFFF; border: 1px solid #000000; border-radius: 3px; color: #000000"
+                  @click="resetCuriosity"
                 >
-                  <span class="font-mono shrink-0" style="color: #C8C8C8">{{ i + 1 }}.</span>
-                  <span class="leading-snug">"{{ p }}"</span>
-                </li>
-              </ul>
-              <div v-else class="text-xs italic" style="color: #C8C8C8">
-                нет фраз (молчаливое состояние)
+                  Reset
+                </button>
               </div>
             </div>
-          </section>
+          </details>
 
-          <!-- ─── Trigger Map ─── -->
-          <!-- Reads TRIGGER_CONFIG from engine/triggers.js. Each row maps
-               event → state → phrase, grouped by `when` event type.
-               Tap a row to preview Tama's reaction (uses configured phrase,
-               not a random one from TAMA_PHRASES). -->
-          <section class="space-y-2">
-            <div class="font-mono text-[10px] uppercase tracking-[0.2em]" style="color: #4A4A4A">
-              Карта триггеров
-            </div>
-            <div class="text-[11px] leading-relaxed mb-2" style="color: #8A8A8A">
-              Событие → состояние → фраза. Источник: <code style="background: #EEEEEE; padding: 1px 4px; border-radius: 2px; color: #000000">engine/triggers.js</code>.
-              Клик по строке — превью реакции маскота.
-            </div>
-            <div
-              v-for="group in triggerMap"
-              :key="group.when"
-              class="overflow-hidden"
-              style="background: #FFFFFF; border: 1px solid #C8C8C8; border-radius: 4px"
+          <!-- ─── 5. Agenda queue (pending + delivered) ─── -->
+          <details
+            class="overflow-hidden"
+            style="background: #FFFFFF; border: 1px solid #C8C8C8; border-radius: 4px"
+          >
+            <summary
+              class="px-3 py-2 cursor-pointer text-xs font-semibold"
+              style="background: #EEEEEE; color: #000000; user-select: none"
             >
-              <!-- Group header — event type with friendly label -->
-              <div
-                class="px-3 py-1.5 flex items-center justify-between"
-                style="background: #EEEEEE; border-bottom: 1px solid #C8C8C8"
-              >
-                <code class="text-xs" style="color: #000000">{{ group.when }}</code>
-                <span class="text-[10px]" style="color: #8A8A8A">
-                  {{ whenLabel(group.when) }}
-                </span>
+              Agenda queue · pending {{ agendaApi.pendingAgendas.value.length }} · delivered {{ deliveredAgendaFlagsLive.length }}
+            </summary>
+            <div class="p-3 space-y-3">
+              <!-- Pending list -->
+              <div class="space-y-1">
+                <div class="text-[10px] uppercase tracking-wider" style="color: #8A8A8A">
+                  Pending ({{ agendaApi.pendingAgendas.value.length }})
+                </div>
+                <div
+                  v-if="agendaApi.pendingAgendas.value.length === 0"
+                  class="text-[11px] italic"
+                  style="color: #C8C8C8"
+                >
+                  — очередь пуста —
+                </div>
+                <ul v-else class="space-y-0.5 text-[11px] font-mono">
+                  <li
+                    v-for="item in agendaApi.pendingAgendas.value"
+                    :key="item.trigger_id"
+                    class="flex items-center gap-2"
+                    style="color: #000000"
+                  >
+                    <span
+                      class="px-1 py-0.5 text-[9px]"
+                      style="background: #000000; color: #FFFFFF; border-radius: 2px"
+                    >
+                      p{{ item.priority }}
+                    </span>
+                    <code style="color: #000000">{{ item.trigger_id }}</code>
+                    <span style="color: #8A8A8A">·</span>
+                    <code style="color: #4A4A4A">{{ item.mascot_state }}</code>
+                  </li>
+                </ul>
               </div>
-
-              <!-- Rows -->
-              <button
-                v-for="trig in group.triggers"
-                :key="trig.id"
-                type="button"
-                class="w-full text-left px-3 py-2 transition-colors flex flex-col gap-0.5"
-                :disabled="!trig.mascotState"
-                :style="{
-                  borderTop: '1px solid #EEEEEE',
-                  cursor: trig.mascotState ? 'pointer' : 'default',
-                  opacity: trig.mascotState ? 1 : 0.55,
-                }"
-                @click="previewTrigger(trig)"
-              >
-                <div class="flex items-center gap-2 flex-wrap">
-                  <code class="text-[11px] font-mono" style="color: #000000">{{ trig.id }}</code>
-                  <span style="color: #C8C8C8">→</span>
-                  <code
-                    v-if="trig.mascotState"
-                    class="px-1.5 py-0.5 rounded text-[10px]"
-                    style="background: #000000; color: #FFFFFF"
-                  >
-                    {{ trig.mascotState }}
-                  </code>
-                  <span
-                    v-else
-                    class="text-[10px] italic"
-                    style="color: #8A8A8A"
-                  >
-                    тишина
-                  </span>
+              <!-- Delivered list with cooldown countdown -->
+              <div class="space-y-1">
+                <div class="text-[10px] uppercase tracking-wider" style="color: #8A8A8A">
+                  Delivered ({{ deliveredAgendaFlagsLive.length }})
                 </div>
                 <div
-                  v-if="trig.mascotPhrase"
-                  class="text-[11px] leading-snug"
-                  style="color: #4A4A4A"
+                  v-if="deliveredAgendaFlagsLive.length === 0"
+                  class="text-[11px] italic"
+                  style="color: #C8C8C8"
                 >
-                  "{{ trig.mascotPhrase }}"
+                  — ничего не доставлено —
                 </div>
-                <div
-                  v-else-if="trig.mascotState"
-                  class="text-[10px] italic"
-                  style="color: #8A8A8A"
-                >
-                  фраза случайная из TAMA_PHRASES.{{ trig.mascotState }}
-                </div>
-              </button>
+                <ul v-else class="space-y-1 text-[11px] font-mono">
+                  <li
+                    v-for="item in deliveredAgendaFlagsLive"
+                    :key="item.trigger_id"
+                    class="flex items-center gap-2"
+                    style="color: #000000"
+                  >
+                    <code style="color: #000000">{{ item.trigger_id }}</code>
+                    <span style="color: #8A8A8A">@ {{ item.timestampLabel }}</span>
+                    <span style="color: #4A4A4A">cd: {{ item.remainingLabel }}</span>
+                    <button
+                      type="button"
+                      class="ml-auto px-1.5 py-0.5 text-[9px]"
+                      style="background: #FFFFFF; border: 1px solid #C8C8C8; border-radius: 2px; color: #4A4A4A"
+                      @click="resetSingleAgendaCooldown(item.trigger_id)"
+                    >
+                      reset
+                    </button>
+                  </li>
+                </ul>
+              </div>
             </div>
-          </section>
+          </details>
+
+          <!-- ─── 6. First-time flags toggle list ─── -->
+          <details
+            class="overflow-hidden"
+            style="background: #FFFFFF; border: 1px solid #C8C8C8; border-radius: 4px"
+          >
+            <summary
+              class="px-3 py-2 cursor-pointer text-xs font-semibold"
+              style="background: #EEEEEE; color: #000000; user-select: none"
+            >
+              First-time flags · {{ flagsListLive.filter(f => f.seen).length }} / {{ flagsListLive.length }} set
+            </summary>
+            <div class="p-3 space-y-1">
+              <div class="text-[11px] leading-snug mb-2" style="color: #4A4A4A">
+                Persistence: <code style="background: #EEEEEE; padding: 1px 3px; border-radius: 2px; color: #000000">mascot:flag:&lt;name&gt;:v1</code>.
+                Toggle для отдельного reset/mark.
+              </div>
+              <label
+                v-for="flag in flagsListLive"
+                :key="flag.name"
+                class="flex items-center gap-2 py-0.5 text-[11px] font-mono cursor-pointer"
+                style="color: #000000"
+              >
+                <input
+                  type="checkbox"
+                  :checked="flag.seen"
+                  @change="toggleFlag(flag)"
+                  class="shrink-0"
+                />
+                <code style="color: #000000">{{ flag.name }}</code>
+                <span
+                  v-if="flag.dynamic"
+                  class="text-[9px] px-1 py-0.5"
+                  style="background: #EEEEEE; color: #4A4A4A; border-radius: 2px"
+                >
+                  dyn
+                </span>
+              </label>
+            </div>
+          </details>
+
+          <!-- ─── 7. Reference: phrase bank + direct state buttons ─── -->
+          <!-- Collapsed by default — accordion makes these mostly redundant,
+               but keep for visual state-preview convenience. -->
+          <details
+            class="overflow-hidden"
+            style="background: #FFFFFF; border: 1px solid #C8C8C8; border-radius: 4px"
+          >
+            <summary
+              class="px-3 py-2 cursor-pointer text-xs font-semibold"
+              style="background: #EEEEEE; color: #000000; user-select: none"
+            >
+              Reference (phrase bank · state buttons · scenarios)
+            </summary>
+            <div class="p-3 space-y-4">
+              <!-- 12-state direct buttons -->
+              <section class="space-y-1.5">
+                <div class="font-mono text-[10px] uppercase tracking-[0.2em]" style="color: #4A4A4A">
+                  12 состояний (visual preview)
+                </div>
+                <div class="grid grid-cols-3 gap-1.5">
+                  <button
+                    v-for="b in MASCOT_STATE_BUTTONS"
+                    :key="b.id"
+                    type="button"
+                    class="px-2 py-1.5 text-[10px] font-medium"
+                    :style="{
+                      background: tama.currentState.value === b.id ? '#000000' : '#FFFFFF',
+                      color: tama.currentState.value === b.id ? '#FFFFFF' : '#000000',
+                      border: '1px solid #000000',
+                      borderRadius: '3px',
+                    }"
+                    @click="runMascotState(b.id)"
+                  >
+                    {{ b.label }}
+                  </button>
+                </div>
+              </section>
+              <!-- Game scenarios -->
+              <section class="space-y-1.5">
+                <div class="font-mono text-[10px] uppercase tracking-[0.2em]" style="color: #4A4A4A">
+                  Игровой сценарий
+                </div>
+                <div class="grid grid-cols-3 gap-1.5">
+                  <button
+                    type="button"
+                    class="px-2 py-1.5 text-[10px] font-medium"
+                    style="background: #FFFFFF; border: 1px solid #000000; border-radius: 3px; color: #000000"
+                    @click="runCommonScenario"
+                  >
+                    Common
+                  </button>
+                  <button
+                    type="button"
+                    class="px-2 py-1.5 text-[10px] font-medium"
+                    style="background: #FFFFFF; border: 1px solid #000000; border-radius: 3px; color: #000000"
+                    @click="runLegendaryScenario"
+                  >
+                    Legendary
+                  </button>
+                  <button
+                    type="button"
+                    class="px-2 py-1.5 text-[10px] font-medium"
+                    style="background: #FFFFFF; border: 1px solid #000000; border-radius: 3px; color: #000000"
+                    @click="runMythicScenario"
+                  >
+                    Mythic
+                  </button>
+                </div>
+              </section>
+              <!-- Phrase Bank -->
+              <section class="space-y-1.5">
+                <div class="font-mono text-[10px] uppercase tracking-[0.2em]" style="color: #4A4A4A">
+                  Phrase bank (TAMA_PHRASES + onboarding)
+                </div>
+                <div
+                  v-for="group in phraseBank"
+                  :key="group.id"
+                  class="p-2"
+                  style="background: #FAFAFA; border: 1px solid #EEEEEE; border-radius: 3px"
+                >
+                  <div class="flex items-center justify-between mb-1">
+                    <code class="px-1 py-0.5 text-[10px]" style="background: #000000; color: #FFFFFF; border-radius: 2px">
+                      {{ group.id }}
+                    </code>
+                    <span class="text-[10px]" style="color: #8A8A8A">
+                      {{ group.phrases.length }}
+                    </span>
+                  </div>
+                  <ul v-if="group.phrases.length" class="space-y-0.5 text-[10px]">
+                    <li
+                      v-for="(p, i) in group.phrases"
+                      :key="i"
+                      class="flex items-start gap-1"
+                      style="color: #000000"
+                    >
+                      <span class="font-mono shrink-0" style="color: #C8C8C8">{{ i + 1 }}.</span>
+                      <span class="leading-snug">"{{ p }}"</span>
+                    </li>
+                  </ul>
+                  <div v-else class="text-[10px] italic" style="color: #C8C8C8">
+                    — пусто —
+                  </div>
+                </div>
+              </section>
+            </div>
+          </details>
         </div>
 
         <!-- ═══ SYSTEM TAB ═══ -->
