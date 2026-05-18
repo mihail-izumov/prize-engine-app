@@ -259,7 +259,9 @@ const lookUpClass = computed(() => tama.onboardingLookUp.value ? 'mascot-look-up
           v-if="tama.bubble.value"
           class="absolute bottom-full mb-2 pointer-events-auto"
           :class="isMobile ? 'left-1/2' : 'right-2'"
-          :style="isMobile ? { transform: 'translateX(-50%)' } : {}"
+          :style="isMobile
+            ? { transform: 'translateX(-50%)', width: 'max-content' }
+            : { width: 'max-content' }"
         >
           <div
             role="status"
