@@ -67,9 +67,19 @@ body {
 @keyframes pulse {
   50% { opacity: 0.5; }
 }
-@keyframes toastSlideUp {
-  0% { opacity: 0; transform: translateY(20px); }
+/* β.2(α): toast moved to top of viewport — slides DOWN from above on enter.
+   Renamed from toastSlideUp to reflect new direction. */
+@keyframes toastSlideDown {
+  0% { opacity: 0; transform: translateY(-20px); }
   100% { opacity: 1; transform: translateY(0); }
+}
+/* β.2(α.bis): slide-OUT keyframe. Triggered inline from ToastStack.vue
+   when an id is in leavingIds — animation property switches from
+   toastSlideDown to toastSlideOut. `forwards` holds end-state (invisible)
+   for the 350ms before ToastStack drops the row from its local mirror. */
+@keyframes toastSlideOut {
+  0%   { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-100%); }
 }
 /* Drop-to-cart: подарок "летит" из центра к иконке таба "Корзина".
    Длительность 900ms. Backdrop затемнён до rgba(0,0,0,0.7), потом fade-out. */

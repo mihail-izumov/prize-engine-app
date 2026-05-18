@@ -275,7 +275,7 @@ const lookUpClass = computed(() => tama.onboardingLookUp.value ? 'mascot-look-up
                 background: '#FFFFFF',
                 border: '2.5px solid #000000',
                 borderRadius: '3px',
-                maxWidth: '240px',
+                maxWidth: 'min(320px, calc(100vw - 32px))',
                 minWidth: '120px',
               }"
             >

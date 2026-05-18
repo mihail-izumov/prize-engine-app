@@ -196,7 +196,7 @@ export const TRIGGER_CONFIG = [
     when: 'scan_error',
     test: (e) => e.error === 'INVALID_QR',
     build: () => ({ kind: 'error', title: 'Неверный формат QR', detail: 'пример: ST-A-0027', icon: 'X' }),
-    mascotPhrase: 'Хм, не похоже на код от коробки',
+    mascotPhrase: 'Не оно.',
     mascotState: 'pondering' // v0.2: sleepy → pondering (SCENARIOS §13 Q3)
   },
   {
@@ -204,7 +204,7 @@ export const TRIGGER_CONFIG = [
     when: 'scan_error',
     test: (e) => e.error === 'PARTITION_CLOSED',
     build: () => ({ kind: 'error', title: 'Партия закрыта', detail: 'все коробки уже открыты', icon: 'X' }),
-    mascotPhrase: 'Эта серия закончилась',
+    mascotPhrase: 'Жди следующую партию.',
     mascotState: 'farewell'
   },
   {
@@ -212,7 +212,7 @@ export const TRIGGER_CONFIG = [
     when: 'scan_error',
     test: (e) => e.error === 'QR_ALREADY_USED' || e.error === 'QR_ALREADY_SCANNED',
     build: () => ({ kind: 'error', title: 'Этот QR уже использован', detail: 'каждая коробка открывается один раз', icon: 'X' }),
-    mascotPhrase: 'Уже её открывали',
+    mascotPhrase: 'Эта уже была.',
     mascotState: 'pondering' // v0.2: sleepy → pondering (SCENARIOS §13 Q3)
   },
   {
@@ -386,7 +386,7 @@ export const TRIGGER_CONFIG = [
       icon: 'Award'
     }),
     delay: 600,
-    mascotPhrase: 'Первая в топ-коллекции!',
+    mascotPhrase: 'A открылся. Топ-пул.',
     mascotState: 'delight'
   },
   {
@@ -400,7 +400,7 @@ export const TRIGGER_CONFIG = [
       icon: 'Award'
     }),
     delay: 600,
-    mascotPhrase: 'Первая в B!',
+    mascotPhrase: 'B открылся.',
     mascotState: 'delight'
   },
   {
@@ -414,7 +414,7 @@ export const TRIGGER_CONFIG = [
       icon: 'Award'
     }),
     delay: 600,
-    mascotPhrase: 'Первая в C!',
+    mascotPhrase: 'C открылся. Самый редкий.',
     mascotState: 'delight'
   },
   {
@@ -489,7 +489,7 @@ export const TRIGGER_CONFIG = [
       };
     },
     delay: 800,
-    mascotPhrase: 'Полная коллекция!',
+    mascotPhrase: 'Полный комплект. Только Gold ждёт.',
     mascotState: 'wow'
   },
 
@@ -610,7 +610,7 @@ export const TRIGGER_CONFIG = [
       icon: 'Award'
     }),
     delay: 300,
-    mascotPhrase: 'Legendary. Они только в Pool C — 5% коробок.',
+    mascotPhrase: 'Pool C ответил.',
     mascotState: 'charge-up',
     markFlag: 'first_legendary'
   },
@@ -628,7 +628,7 @@ export const TRIGGER_CONFIG = [
       icon: 'Flame'
     }),
     delay: 200,
-    mascotPhrase: 'Искра. Это мелочи сверху обмена, не каталог.',
+    mascotPhrase: 'Сбоку упало.',
     mascotState: 'proud',
     markFlag: 'first_spark_seen'
   },
@@ -707,7 +707,7 @@ export const TRIGGER_CONFIG = [
                               && !flags().hasSeenFlag('tier_row_complete:common'),
     build: () => ({ kind: 'success', title: 'Ряд Common закрыт', icon: 'Award' }),
     delay: 600,
-    mascotPhrase: 'Ряд Common закрыт.',
+    mascotPhrase: 'Common — полный.',
     mascotState: 'proud',
     markFlag: 'tier_row_complete:common'
   },
@@ -718,7 +718,7 @@ export const TRIGGER_CONFIG = [
                               && !flags().hasSeenFlag('tier_row_complete:rare'),
     build: () => ({ kind: 'success', title: 'Ряд Rare закрыт', icon: 'Award' }),
     delay: 600,
-    mascotPhrase: 'Rare ряд закрыт. Уже не каждый собирает.',
+    mascotPhrase: 'Rare закрыт. Не каждый собирает.',
     mascotState: 'proud',
     markFlag: 'tier_row_complete:rare'
   },
@@ -729,7 +729,7 @@ export const TRIGGER_CONFIG = [
                               && !flags().hasSeenFlag('tier_row_complete:epic'),
     build: () => ({ kind: 'success', title: 'Ряд Epic закрыт', icon: 'Award' }),
     delay: 600,
-    mascotPhrase: 'Epic ряд. Это уровень.',
+    mascotPhrase: 'Epic закрыт. Серьёзно.',
     mascotState: 'proud',
     markFlag: 'tier_row_complete:epic'
   },
@@ -740,7 +740,7 @@ export const TRIGGER_CONFIG = [
                               && !flags().hasSeenFlag('tier_row_complete:legendary'),
     build: () => ({ kind: 'success', title: 'Ряд Legendary закрыт', icon: 'Award' }),
     delay: 600,
-    mascotPhrase: 'Legendary ряд. Серьёзно.',
+    mascotPhrase: 'Legendary закрыт. Редкость.',
     mascotState: 'wow',
     markFlag: 'tier_row_complete:legendary'
   },
@@ -758,7 +758,7 @@ export const TRIGGER_CONFIG = [
       icon: 'RefreshCw'
     }),
     delay: 500,
-    mascotPhrase: 'Уже такой есть. Обменяй на заряды — норм.',
+    mascotPhrase: 'Уже такой есть.',
     mascotState: 'pondering',
     markFlag: 'duplicate_received'
   },
@@ -774,7 +774,7 @@ export const TRIGGER_CONFIG = [
       detail: 'тап по призу — детали',
       icon: 'Award'
     }),
-    mascotPhrase: 'Здесь твоя коллекция. Tap по призу — детали.',
+    mascotPhrase: 'Тут всё что собрал.',
     mascotState: 'big-eyes',
     markFlag: 'collection_first_visit'
   },
@@ -794,7 +794,7 @@ export const TRIGGER_CONFIG = [
       detail: 'Common 200 / Epic 1800 / Legendary 5000',
       icon: 'ShoppingBasket'
     }),
-    mascotPhrase: 'Common 200, Epic 1800, Legendary 5000. Обменивай заряды на призы.',
+    mascotPhrase: 'Цены прямо на призах. Меняй заряды.',
     mascotState: 'big-eyes',
     markFlag: 'cart_first_visit'
   },
@@ -850,7 +850,7 @@ export const TRIGGER_CONFIG = [
       icon: 'ShoppingBasket'
     }),
     delay: 500,
-    mascotPhrase: 'В Корзине ждут призы. Tap чтобы получить код выдачи.',
+    mascotPhrase: 'Приз ждёт выдачи.',
     mascotState: 'delight',
     markFlag: 'first_received'
   },
@@ -868,7 +868,7 @@ export const TRIGGER_CONFIG = [
       detail: '×2 шанс Rare на следующем скане',
       icon: 'Sparkles'
     }),
-    mascotPhrase: 'Везение активировано. ×2 шанс Rare на следующем скане.',
+    mascotPhrase: 'Везение в игре.',
     mascotState: 'smug-wink',
     markFlag: 'first_activate_luck'
   },
@@ -882,7 +882,7 @@ export const TRIGGER_CONFIG = [
       detail: '×2 заряды на следующем скане',
       icon: 'Sparkles'
     }),
-    mascotPhrase: 'Двойка. На следующем скане заряды удвоятся.',
+    mascotPhrase: 'Двойка готова.',
     mascotState: 'smug-wink',
     markFlag: 'first_activate_double'
   },
@@ -897,7 +897,7 @@ export const TRIGGER_CONFIG = [
       detail: 'гарантия Pool C на следующем скане',
       icon: 'Key'
     }),
-    mascotPhrase: 'Ключ. Следующий скан — гарантия Pool C.',
+    mascotPhrase: 'Ключ повернулся.',
     mascotState: 'smug-wink',
     markFlag: 'first_activate_key'
   },
@@ -947,7 +947,7 @@ export const TRIGGER_CONFIG = [
       title: 'Сила уже активна',
       detail: 'сработает на следующем скане',
     }),
-    mascotPhrase: 'Уже активирована. Сработает на следующем скане.',
+    mascotPhrase: 'Уже в очереди.',
     mascotState: 'pondering'
   },
 
@@ -962,7 +962,7 @@ export const TRIGGER_CONFIG = [
       detail: 'Везение ×2 Rare · Двойка ×2 зарядов · Ключ → Pool C',
       icon: 'Zap'
     }),
-    mascotPhrase: 'Три силы. Везение ×2 Rare, Двойка ×2 зарядов, Ключ — Pool C.',
+    mascotPhrase: 'Собираешь карты — активируешь.',
     mascotState: 'big-eyes',
     markFlag: 'powers_first_visit'
   },
@@ -979,7 +979,7 @@ export const TRIGGER_CONFIG = [
       title: 'Счёт пуст',
       detail: 'время сканировать',
     }),
-    mascotPhrase: 'Счёт пуст. Время сканировать.',
+    mascotPhrase: 'Сканер ждёт.',
     mascotState: 'sleepy'
   },
 
@@ -1044,7 +1044,7 @@ export const TRIGGER_CONFIG = [
       icon: 'Flame'
     }),
     delay: 300,
-    mascotPhrase: 'Третий подряд. Удача любит горячих.',
+    mascotPhrase: 'Серия пошла.',
     mascotState: 'charge-up'
   },
 
@@ -1086,7 +1086,7 @@ export const TRIGGER_CONFIG = [
       detail: 'статистика и история',
       icon: 'Info'
     }),
-    mascotPhrase: 'Тут статистика и история.',
+    mascotPhrase: 'Числа и история.',
     mascotState: 'big-eyes',
     markFlag: 'profile_first_visit'
   },
